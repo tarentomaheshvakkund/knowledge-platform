@@ -46,6 +46,8 @@ class StorageService {
             Platform.config.getString("azure_storage_container")
         else if (StringUtils.equalsIgnoreCase(storageType, "aws"))
             Platform.config.getString("aws_storage_container")
+        else if (StringUtils.equalsIgnoreCase(storageType, "cephs3"))
+            Platform.config.getString("cephs3_storage_container")   
         else
             throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Container name not configured.")
     }
