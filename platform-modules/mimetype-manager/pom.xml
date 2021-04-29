@@ -13,7 +13,7 @@
         <scala.major.version>2.11</scala.major.version>
         <play2.version>2.7.2</play2.version>
     </properties>
-   <repositories>
+  <!-- <repositories>
          <repository>
                   <id>cloud-store-sdk_1.3.1-beta</id>
                   <name>cloud-store-sdk_1.3.1-beta</name>
@@ -28,7 +28,7 @@
                <groupId>org.sunbird</groupId>
                 <artifactId>cloud-store-sdk</artifactId>
                 <version>1.3.1-beta</version>
-        </dependency>
+        </dependency> -->
         <dependency>
             <groupId>org.sunbird</groupId>
             <artifactId>platform-common</artifactId>
