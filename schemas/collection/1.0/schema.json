@@ -1246,12 +1246,6 @@
       "items": {
         "type": "string"
       }
-    },
-    "taxonomyPaths": {
-      "type": "array",
-      "items": {
-        "type": "object"
-      }
     }
   }
 }
