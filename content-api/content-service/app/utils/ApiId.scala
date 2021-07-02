@@ -69,4 +69,12 @@ object ApiId {
 	val UPDATE_HIERARCHY_V4 = "api.collection.hierarchy.update"
 	val GET_HIERARCHY_V4 = "api.collection.hierarchy.get"
 
+  val CREATE_EVENT = "api.event.create"
+  val UPDATE_EVENT = "api.event.update"
+
+  val CREATE_EVENT_SET = "api.eventset.create"
+  val UPDATE_EVENT_SET = "api.eventset.update"
+  val PUBLISH_EVENT_SET = "api.eventset.publish"
+  val PUBLISH_EVENT = "api.event.publish"
+
 }
