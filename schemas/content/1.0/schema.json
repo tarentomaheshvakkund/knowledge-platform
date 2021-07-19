@@ -1347,6 +1347,12 @@
             "items": {
                 "type": "string"
             }
+        },
+        "taxonomyPathsTest3": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
         }
     }
 }
