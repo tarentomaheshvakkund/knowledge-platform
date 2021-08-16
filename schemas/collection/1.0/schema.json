@@ -1247,7 +1247,7 @@
         "type": "string"
       }
     },
-    "taxonomyPathsTest5": {
+    "taxonomyPathsTest6": {
       "type": "array",
       "items": {
         "type": "object"
