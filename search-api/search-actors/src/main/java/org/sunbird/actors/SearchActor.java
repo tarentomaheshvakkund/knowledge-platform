@@ -242,8 +242,10 @@ public class SearchActor extends SearchBaseActor {
             searchObj.setSortBy(sortBy);
             searchObj.setFacets(facets);
             searchObj.setProperties(properties);
-            if(multiFilters!=null)
+            if(multiFilters!=null){
                 multiFilterProperties.addAll(getSearchFilterProperties(multiFilters, wordChainsRequest));
+                searchObj.setMultiFilterProperties(multiFilterProperties);
+            }
             // Added Implicit Filter Properties To Support Collection content tagging to reuse by tenants.
             setImplicitFilters(filters, searchObj);
             searchObj.setLimit(limit);
