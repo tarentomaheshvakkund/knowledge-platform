@@ -1347,6 +1347,24 @@
             "items": {
                 "type": "string"
             }
-        }
+        },
+           "taxonomyPathsTest4": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "taxonomyPaths_v2": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "competencies_v2": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
     }
 }
