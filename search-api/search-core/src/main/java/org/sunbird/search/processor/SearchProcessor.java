@@ -279,7 +279,7 @@ public class SearchProcessor {
               System.out.println("Enter into aggregations ...");
 		try {
 		    System.out.println(mapper.writeValueAsString(groupByList));
-		} catch (JsonProcessingException e) {
+		} catch (Exception e) {
 		    e.printStackTrace();
 		}
 		TermsAggregationBuilder termBuilder = null;
