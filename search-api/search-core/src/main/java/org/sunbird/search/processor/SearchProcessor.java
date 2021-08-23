@@ -307,6 +307,8 @@ public class SearchProcessor {
 	        formQuery(properties, queryBuilder, boolQuery, totalOperation);
 
 		List<Map> multiFilterProperties = searchDTO.getMultiFilterProperties();
+	        System.out.println("multiFilterProperties:: "+multiFilterProperties);
+
 		if(multiFilterProperties!=null)
 			formQuery(multiFilterProperties, queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR);
 
