@@ -49,6 +49,7 @@ import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms.Bucket;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.ParsedNested;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.sunbird.common.Platform;
 import org.sunbird.common.exception.ServerException;
@@ -618,7 +619,6 @@ public class ElasticSearchUtil {
 	 System.out.println("Enter into aggregation count method::");
         try {
             System.out.println(mapper.writeValueAsString(groupByList));
-            System.out.println(mapper.writeValueAsString(aggregations));
         } catch (Exception e) {
             e.printStackTrace();
         }	
@@ -630,19 +630,18 @@ public class ElasticSearchUtil {
                 List<Bucket> buckets = null;
                 if (groupByParent.contains(".")) {
                     System.out.println("Enters in the nested aggregation");
-                    terms = aggregations.get(groupByParent.split("\\.")[0]);
                     try {
                         System.out.println("Aggregation values");
                         System.out.println(mapper.writeValueAsString(aggregations.getAsMap()));
-                        System.out.println(mapper.writeValueAsString(terms));
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    buckets = (List<Bucket>) terms.getBucketByKey(groupByParent.split("\\.")[1]);
+	            ParsedNested parsedNested = aggregations.get(groupByParent.split("\\.")[0]);
+                    terms = parsedNested.getAggregations().get(groupByParent.split("\\.")[1]);
                 } else {
                     terms = aggregations.get(groupByParent);
-                    buckets = (List<Bucket>) terms.getBuckets();
                 }
+		buckets = (List<Bucket>)terms.getBuckets();
                 List<Map<String, Object>> parentGroupList = new ArrayList<Map<String, Object>>();
                 for (Bucket bucket : buckets) {
                     Map<String, Object> parentCountObject = new HashMap<String, Object>();
