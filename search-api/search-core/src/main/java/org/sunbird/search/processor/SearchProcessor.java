@@ -63,6 +63,7 @@ public class SearchProcessor {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public Future<Map<String, Object>> processSearch(SearchDTO searchDTO, boolean includeResults)
 			throws Exception {
+	        System.out.println("Enter into process search");
 		List<Map<String, Object>> groupByFinalList = new ArrayList<Map<String, Object>>();
 		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, true);
 		Future<SearchResponse> searchResponse = ElasticSearchUtil.search(
@@ -263,6 +264,7 @@ public class SearchProcessor {
 		setAggregations(groupByFinalList, searchSourceBuilder);
 		setAggregations(searchSourceBuilder, searchDTO.getAggregations());
 		searchSourceBuilder.trackScores(true);
+		 System.out.println(searchSourceBuilder.toString());
 		return searchSourceBuilder;
 	}
 
@@ -274,6 +276,12 @@ public class SearchProcessor {
 	  @SuppressWarnings("unchecked")
 	  private void setAggregations(List<Map<String, Object>> groupByList,
 					 SearchSourceBuilder searchSourceBuilder) {
+              System.out.println("Enter into aggregations ...");
+		try {
+		    System.out.println(mapper.writeValueAsString(groupByList));
+		} catch (JsonProcessingException e) {
+		    e.printStackTrace();
+		}
 		TermsAggregationBuilder termBuilder = null;
 		if (groupByList != null && !groupByList.isEmpty()) {
 		    HashMap<String, List<String>> nestedAggregation = new HashMap<>();
@@ -293,6 +301,7 @@ public class SearchProcessor {
 			    }
 			    searchSourceBuilder.aggregation(termBuilder);
 			} else {
+			    System.out.println("Nested field ..." + groupByParent);
 			    if (nestedAggregation.get(groupByParent.split("\\.")[0]) != null) {
 				nestedAggregation.get(groupByParent.split("\\.")[0]).add(groupByParent.split("\\.")[1]);
 			    } else {
