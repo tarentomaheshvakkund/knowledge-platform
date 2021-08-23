@@ -615,6 +615,13 @@ public class ElasticSearchUtil {
 	public static Object getCountFromAggregation(Aggregations aggregations, List<Map<String, Object>> groupByList,
                                                  IESResultTransformer transformer) {
         Map<String, Object> countMap = new HashMap<String, Object>();
+	 System.out.println("Enter into aggregation count method::");
+        try {
+            System.out.println(mapper.writeValueAsString(groupByList));
+            System.out.println(mapper.writeValueAsString(aggregations));
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }	
         if (aggregations != null) {
             for (Map<String, Object> aggregationsMap : groupByList) {
                 Map<String, Object> parentCountMap = new HashMap<String, Object>();
