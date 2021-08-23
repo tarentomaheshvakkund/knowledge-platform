@@ -49,7 +49,7 @@ import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms.Bucket;
 import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
-import org.elasticsearch.search.aggregations.bucket.nested.ParsedNested;
+import org.elasticsearch.search.aggregations.bucket.nested.Nested;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.sunbird.common.Platform;
 import org.sunbird.common.exception.ServerException;
@@ -636,8 +636,8 @@ public class ElasticSearchUtil {
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-	            ParsedNested parsedNested = aggregations.get(groupByParent.split("\\.")[0]);
-                    terms = parsedNested.getAggregations().get(groupByParent.split("\\.")[1]);
+	            Nested nested = aggregations.get(groupByParent.split("\\.")[0]);
+                    terms = nested.getAggregations().get(groupByParent.split("\\.")[1]);
                 } else {
                     terms = aggregations.get(groupByParent);
                 }
