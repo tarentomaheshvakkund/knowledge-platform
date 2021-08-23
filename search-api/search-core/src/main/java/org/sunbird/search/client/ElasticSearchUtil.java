@@ -619,7 +619,7 @@ public class ElasticSearchUtil {
         try {
             System.out.println(mapper.writeValueAsString(groupByList));
             System.out.println(mapper.writeValueAsString(aggregations));
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }	
         if (aggregations != null) {
@@ -635,7 +635,7 @@ public class ElasticSearchUtil {
                         System.out.println("Aggregation values");
                         System.out.println(mapper.writeValueAsString(aggregations.getAsMap()));
                         System.out.println(mapper.writeValueAsString(terms));
-                    } catch (JsonProcessingException e) {
+                    } catch (Exception e) {
                         e.printStackTrace();
                     }
                     buckets = (List<Bucket>) terms.getBucketByKey(groupByParent.split("\\.")[1]);
