@@ -271,28 +271,53 @@ public class SearchProcessor {
 	 * @param searchSourceBuilder
 	 * @return
 	 */
-	@SuppressWarnings("unchecked")
-	private void setAggregations(List<Map<String, Object>> groupByList,
-			SearchSourceBuilder searchSourceBuilder) {
+	  @SuppressWarnings("unchecked")
+	  private void setAggregations(List<Map<String, Object>> groupByList,
+					 SearchSourceBuilder searchSourceBuilder) {
+            
 		TermsAggregationBuilder termBuilder = null;
 		if (groupByList != null && !groupByList.isEmpty()) {
-			for (Map<String, Object> groupByMap : groupByList) {
-				String groupByParent = (String) groupByMap.get("groupByParent");
-				termBuilder = AggregationBuilders.terms(groupByParent)
-						.field(groupByParent + SearchConstants.RAW_FIELD_EXTENSION)
-						.size(ElasticSearchUtil.defaultResultLimit);
-				List<String> groupByChildList = (List<String>) groupByMap.get("groupByChildList");
-				if (groupByChildList != null && !groupByChildList.isEmpty()) {
-					for (String childGroupBy : groupByChildList) {
-						termBuilder.subAggregation(AggregationBuilders.terms(childGroupBy)
-								.field(childGroupBy + SearchConstants.RAW_FIELD_EXTENSION)
-								.size(ElasticSearchUtil.defaultResultLimit));
-					}
+		    HashMap<String, List<String>> nestedAggregation = new HashMap<>();
+		    for (Map<String, Object> groupByMap : groupByList) {
+			String groupByParent = (String) groupByMap.get("groupByParent");
+			if (!groupByParent.contains(".")) {
+			    termBuilder = AggregationBuilders.terms(groupByParent)
+				    .field(groupByParent + SearchConstants.RAW_FIELD_EXTENSION)
+				    .size(ElasticSearchUtil.defaultResultLimit);
+			    List<String> groupByChildList = (List<String>) groupByMap.get("groupByChildList");
+			    if (groupByChildList != null && !groupByChildList.isEmpty()) {
+				for (String childGroupBy : groupByChildList) {
+				    termBuilder.subAggregation(AggregationBuilders.terms(childGroupBy)
+					    .field(childGroupBy + SearchConstants.RAW_FIELD_EXTENSION)
+					    .size(ElasticSearchUtil.defaultResultLimit));
 				}
-				searchSourceBuilder.aggregation(termBuilder);
+			    }
+			    searchSourceBuilder.aggregation(termBuilder);
+			} else {
+			    if (nestedAggregation.get(groupByParent.split("\\.")[0]) != null) {
+				nestedAggregation.get(groupByParent.split("\\.")[0]).add(groupByParent.split("\\.")[1]);
+			    } else {
+				List<String> nestedAggrList = new ArrayList<>();
+				nestedAggrList.add(groupByParent.split("\\.")[1]);
+				nestedAggregation.put(groupByParent.split("\\.")[0], nestedAggrList);
+			    }
 			}
+		    }
+
+		    if (!nestedAggregation.isEmpty()) {
+			for (Map.Entry<String, List<String>> mapData : nestedAggregation.entrySet()) {
+			    AggregationBuilder nestedAggregationBuilder = AggregationBuilders.nested(mapData.getKey(), mapData.getKey());
+			    for (String nestedValue : mapData.getValue()) {
+				termBuilder = AggregationBuilders.terms(nestedValue)
+					.field(mapData.getKey() + "." + nestedValue + SearchConstants.RAW_FIELD_EXTENSION)
+					.size(ElasticSearchUtil.defaultResultLimit);
+				nestedAggregationBuilder.subAggregation(termBuilder);
+			    }
+			    searchSourceBuilder.aggregation(nestedAggregationBuilder);
+			}
+		    }
 		}
-	}
+	     }
 
 	/**
 	 * @param searchDTO
