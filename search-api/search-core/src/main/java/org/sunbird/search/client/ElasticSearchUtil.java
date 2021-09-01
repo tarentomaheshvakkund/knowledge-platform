@@ -615,13 +615,7 @@ public class ElasticSearchUtil {
 	@SuppressWarnings("unchecked")
 	public static Object getCountFromAggregation(Aggregations aggregations, List<Map<String, Object>> groupByList,
                                                  IESResultTransformer transformer) {
-        Map<String, Object> countMap = new HashMap<String, Object>();
-	 System.out.println("Enter into aggregation count method::");
-        try {
-            System.out.println(mapper.writeValueAsString(groupByList));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }	
+        Map<String, Object> countMap = new HashMap<String, Object>();	
         if (aggregations != null) {
             for (Map<String, Object> aggregationsMap : groupByList) {
                 Map<String, Object> parentCountMap = new HashMap<String, Object>();
@@ -629,13 +623,7 @@ public class ElasticSearchUtil {
                 Terms terms = null;
                 List<Bucket> buckets = null;
                 if (groupByParent.contains(".")) {
-                    System.out.println("Enters in the nested aggregation");
-                    try {
-                        System.out.println("Aggregation values");
-                        System.out.println(mapper.writeValueAsString(aggregations.getAsMap()));
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                  
 	            Nested nested = aggregations.get(groupByParent.split("\\.")[0]);
                     terms = nested.getAggregations().get(groupByParent.split("\\.")[1]);
                 } else {
