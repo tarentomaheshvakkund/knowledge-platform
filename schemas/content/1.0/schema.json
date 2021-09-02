@@ -1354,7 +1354,7 @@
               "type": "object"
             }
           },
-          "competencies_v2": {
+          "competencies_v3": {
             "type": "array",
             "items": {
               "type": "object"
