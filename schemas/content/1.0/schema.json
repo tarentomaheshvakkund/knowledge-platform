@@ -1359,12 +1359,6 @@
             "items": {
               "type": "object"
             }
-          },
-          "test_competencies_v2": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
           }
     }
 }
