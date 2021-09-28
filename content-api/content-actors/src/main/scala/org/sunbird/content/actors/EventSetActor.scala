@@ -79,7 +79,7 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
     }
   }
 
-  def publish(request: Request): Future[Response] = {
+def publish(request: Request): Future[Response] = {
     DataNode.read(request).flatMap(node => {
       if (!"Draft".equalsIgnoreCase(node.getMetadata.getOrDefault("status", "").toString)) {
         throw new ClientException(ContentConstants.ERR_CONTENT_NOT_DRAFT, "Publish not allowed! EventSet status isn't draft")
@@ -127,7 +127,7 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
     }
   }
 
-  def getHierarchy(request: Request): Future[Response] = {
+   def getHierarchy(request: Request): Future[Response] = {
     val fields: util.List[String] = seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
     request.getRequest.put("fields", fields)
     DataNode.read(request).map(node => {
