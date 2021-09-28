@@ -34,7 +34,6 @@ class StorageService {
                 val storageSecret = Platform.config.getString("cephs3_storage_secret")
                 val endpoint = Platform.config.getString("cephs3_storage_endpoint")
                 storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret, Option(endpoint)))
-
             }
             else throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Error while initialising cloud storage")
         }
