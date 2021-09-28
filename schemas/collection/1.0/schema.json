@@ -135,7 +135,8 @@
       "enum": [
         "Default",
         "Parent",
-        "Private"
+        "Private",
+        "Protected"
       ],
       "default": "Default"
     },
@@ -146,7 +147,10 @@
         "enum": [
           "Student",
           "Teacher",
-          "Administrator"
+          "Administrator",
+          "Parent",
+          "Others",
+          "Other"
         ]
       },
       "default": ["Student"]
@@ -1030,6 +1034,23 @@
       },
       "additionalProperties": false
     },
+    "discussionForum":{
+      "type": "object",
+      "properties":
+      {
+          "enabled":
+          {
+              "type": "string",
+              "enum": ["Yes", "No"],
+              "default": "Yes"
+          }
+      },
+      "default":
+      {
+          "enabled": "Yes"
+      },
+      "additionalProperties": false
+    },
     "primaryCategory": {
       "type": "string"
     },
@@ -1070,47 +1091,47 @@
       "type": "number"
     },
     "catalogPaths" : {
-        "type": "array",
-        "items": {
-          "type": "object"
-        }
-      },
-      "competencies" : {
-        "type": "array",
-        "items": {
-          "type": "object"
-        }
-      },
-      "sharedWith" : {
-          "type": "array" 
-      },
-      "isExternal": {
-          "type": "boolean"
-      },
-      "learningMode": {
-          "type": "string",
-          "enum": [
-            "Self Paced",
-            "Instructor Led",
-            "Classroom"
-        ]
-      },
-      "creatorLogo" : {
-          "type": "string",
-          "format": "url"
-      },
-      "subTitles" : {
-          "type": "array",
-          "items": {
-            "type": "object"
-          }
-      },
-      "reviewStatus" : {
-          "type" : "string",
-          "enum": [
-            "InReview",
-            "Reviewed"
-        ]
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "competencies" : {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sharedWith" : {
+      "type": "array"
+    },
+    "isExternal": {
+      "type": "boolean"
+    },
+    "learningMode": {
+      "type": "string",
+      "enum": [
+        "Self Paced",
+        "Instructor Led",
+        "Classroom"
+      ]
+    },
+    "creatorLogo" : {
+      "type": "string",
+      "format": "url"
+    },
+    "subTitles" : {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "reviewStatus" : {
+      "type" : "string",
+      "enum": [
+        "InReview",
+        "Reviewed"
+      ]
     },
     "boardIds": {
       "type": "array",

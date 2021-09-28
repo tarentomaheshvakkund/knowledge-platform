@@ -172,7 +172,9 @@
             "type": "string",
             "enum": [
                 "Default",
-                "Parent"
+                "Parent",
+                "Private",
+                "Protected"
             ],
             "default": "Default"
         },
@@ -183,7 +185,10 @@
                 "enum": [
                     "Student",
                     "Teacher",
-                    "Administrator"
+                    "Administrator",
+                    "Parent",
+                    "Others",
+                    "Other"
                 ]
             },
             "default": ["Student"]
@@ -1122,6 +1127,23 @@
             },
             "additionalProperties": false
         },
+        "discussionForum":{
+            "type": "object",
+            "properties":
+            {
+                "enabled":
+                {
+                    "type": "string",
+                    "enum": ["Yes", "No"],
+                    "default": "Yes"
+                }
+            },
+            "default":
+            {
+                "enabled": "Yes"
+            },
+            "additionalProperties": false
+        },
         "processId": {
             "type": "string"
         },
@@ -1195,20 +1217,20 @@
                 "Instructor Led",
                 "Classroom"
             ]
-          },
-          "creatorLogo" : {
-              "type": "string",
-              "format": "url"
-          },
-          "subTitles" : {
-              "type": "array",
-              "items": {
+        },
+        "creatorLogo" : {
+            "type": "string",
+            "format": "url"
+        },
+        "subTitles" : {
+            "type": "array",
+            "items": {
                 "type": "object"
-              }
-          },
-          "reviewStatus" : {
-              "type" : "string",
-              "enum": [
+            }
+        },
+        "reviewStatus" : {
+            "type" : "string",
+            "enum": [
                 "InReview",
                 "Reviewed"
             ]
@@ -1282,7 +1304,7 @@
         "maxAttempts": {
             "type": "number"
         },
-        "se_frameworkIds":{
+        "se_FWIds":{
             "type": "array",
             "items": {
                 "type": "string"

@@ -39,17 +39,13 @@ object AssessmentManager {
 		DataNode.read(request).map(node => {
 			val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("Image", ""), request.getContext.get("version").asInstanceOf[String])
 			metadata.put("identifier", node.getIdentifier.replace(".img", ""))
-			val response: Response = ResponseHandler.OK
-			response.put(resName, metadata)
-			response
+			ResponseHandler.OK.put(resName, metadata)
 		})
 	}
 
 	def updateNode(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		DataNode.update(request).map(node => {
-			val response: Response = ResponseHandler.OK
-			response.putAll(Map("identifier" -> node.getIdentifier.replace(".img", ""), "versionKey" -> node.getMetadata.get("versionKey")).asJava)
-			response
+			ResponseHandler.OK.putAll(Map("identifier" -> node.getIdentifier.replace(".img", ""), "versionKey" -> node.getMetadata.get("versionKey")).asJava)
 		})
 	}
 
@@ -169,7 +165,7 @@ object AssessmentManager {
 				if (StringUtils.equalsAnyIgnoreCase(content.getOrDefault("visibility", "").asInstanceOf[String], "Parent")) {
 					content.put("lastStatusChangedOn", DateUtils.formatCurrentDate)
 					content.put("status", status)
-					content.put("prevState", "Draft")
+					content.put("prevStatus", "Draft")
 					content.put("lastUpdatedOn", DateUtils.formatCurrentDate)
 					content.get("identifier").asInstanceOf[String] :: idList
 				} else idList

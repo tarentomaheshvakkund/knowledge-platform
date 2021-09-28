@@ -41,11 +41,8 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
       .map(nodes => updateRequestWithChildRelations(request, originalRequestContent, nodes))
       .flatMap(req => {
         DataNode.create(req).map(node => {
-          val response = ResponseHandler.OK
-          response.put("identifier", node.getIdentifier)
-          response.put("node_id", node.getIdentifier)
-          response.put("versionKey", node.getMetadata.get("versionKey"))
-          response
+          ResponseHandler.OK.put("identifier", node.getIdentifier).put("node_id", node.getIdentifier)
+            .put("versionKey", node.getMetadata.get("versionKey"))
         })
       }).recoverWith {
       case clientException: ClientException =>
@@ -68,12 +65,9 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
           updateRequestWithChildRelations(request, originalRequestContent, nodes)
         }).flatMap(req =>
           DataNode.update(req).map(node => {
-            val response: Response = ResponseHandler.OK
             val identifier: String = node.getIdentifier.replace(".img", "")
-            response.put("node_id", identifier)
-            response.put("identifier", identifier)
-            response.put("versionKey", node.getMetadata.get("versionKey"))
-            response
+            ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
+              .put("versionKey", node.getMetadata.get("versionKey"))
           })
         )
       })
@@ -85,7 +79,7 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
     }
   }
 
-  def publish(request: Request): Future[Response] = {
+def publish(request: Request): Future[Response] = {
     DataNode.read(request).flatMap(node => {
       if (!"Draft".equalsIgnoreCase(node.getMetadata.getOrDefault("status", "").toString)) {
         throw new ClientException(ContentConstants.ERR_CONTENT_NOT_DRAFT, "Publish not allowed! EventSet status isn't draft")
@@ -96,12 +90,9 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
         request.getContext.put("identifier", node.getIdentifier)
         request.put("status", "Live")
         DataNode.update(request).map(updateNode => {
-          val response: Response = ResponseHandler.OK
           val identifier: String = updateNode.getIdentifier.replace(".img", "")
-          response.put("node_id", identifier)
-          response.put("identifier", identifier)
-          response.put("versionKey", updateNode.getMetadata.get("versionKey"))
-          response
+          ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
+            .put("versionKey", updateNode.getMetadata.get("versionKey"))
         })
       }
       )
@@ -136,7 +127,7 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
     }
   }
 
-  def getHierarchy(request: Request): Future[Response] = {
+   def getHierarchy(request: Request): Future[Response] = {
     val fields: util.List[String] = seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
     request.getRequest.put("fields", fields)
     DataNode.read(request).map(node => {
@@ -151,9 +142,7 @@ class EventSetActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageSe
       metadata.put("identifier", node.getIdentifier.replace(".img", ""))
       metadata.put("childNodes", childNodes.asJava)
       metadata.put("children", children.asJava)
-      val response: Response = ResponseHandler.OK
-      response.put("eventset", metadata)
-      response
+      ResponseHandler.OK.put("eventset", metadata)
     })
   }
 

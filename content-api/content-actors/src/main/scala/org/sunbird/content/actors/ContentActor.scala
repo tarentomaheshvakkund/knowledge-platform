@@ -7,6 +7,7 @@ import org.apache.commons.io.FilenameUtils
 
 import javax.inject.Inject
 import org.apache.commons.lang3.StringUtils
+import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.content.util.{AcceptFlagManager, ContentConstants, CopyManager, DiscardManager, FlagManager, RetireManager}
@@ -24,11 +25,14 @@ import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.NodeUtil
 
 import scala.collection.JavaConverters
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
 	implicit val ec: ExecutionContext = getContext().dispatcher
+	private lazy val importConfig = getImportConfig()
+	private lazy val importMgr = new ImportManager(importConfig)
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -52,11 +56,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		populateDefaultersForCreation(request)
 		RequestUtil.restrictProperties(request)
 		DataNode.create(request, dataModifier).map(node => {
-			val response = ResponseHandler.OK
-			response.put("identifier", node.getIdentifier)
-			response.put("node_id", node.getIdentifier)
-			response.put("versionKey", node.getMetadata.get("versionKey"))
-			response
+			ResponseHandler.OK.put("identifier", node.getIdentifier).put("node_id", node.getIdentifier)
+				.put("versionKey", node.getMetadata.get("versionKey"))
 		})
 	}
 
@@ -83,12 +84,9 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		if (StringUtils.isBlank(request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String])) throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
 		RequestUtil.restrictProperties(request)
 		DataNode.update(request, dataModifier).map(node => {
-			val response: Response = ResponseHandler.OK
 			val identifier: String = node.getIdentifier.replace(".img", "")
-			response.put("node_id", identifier)
-			response.put("identifier", identifier)
-			response.put("versionKey", node.getMetadata.get("versionKey"))
-			response
+			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
+				.put("versionKey", node.getMetadata.get("versionKey"))
 		})
 	}
 
@@ -117,15 +115,12 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val identifier: String = request.get("identifier").asInstanceOf[String]
 		validatePreSignedUrlRequest(`type`, fileName, filePath)
 		DataNode.read(request).map(node => {
-			val response = ResponseHandler.OK()
 			val objectKey = if (StringUtils.isEmpty(filePath)) "content" + File.separator + `type` + File.separator + identifier + File.separator + Slug.makeSlug(fileName, true)
 				else filePath + File.separator + "content" + File.separator + `type` + File.separator + identifier + File.separator + Slug.makeSlug(fileName, true)
 			val expiry = Platform.config.getString("cloud_storage.upload.url.ttl")
 			val preSignedURL = ss.getSignedURL(objectKey, Option.apply(expiry.toInt), Option.apply("w"))
-			response.put("identifier", identifier)
-			response.put("pre_signed_url", preSignedURL)
-			response.put("url_expiry", expiry)
-			response
+			ResponseHandler.OK().put("identifier", identifier).put("pre_signed_url", preSignedURL)
+				.put("url_expiry", expiry)
 		}) recoverWith { case e: CompletionException => throw e.getCause }
 	}
 
@@ -147,7 +142,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 
 	def linkDIALCode(request: Request): Future[Response] = DIALManager.link(request)
 
-	def importContent(request: Request): Future[Response] = ImportManager.importContent(request)
+	def importContent(request: Request): Future[Response] = importMgr.importObject(request)
 
 	def populateDefaultersForCreation(request: Request) = {
 		setDefaultsBasedOnMimeType(request, ContentParams.create.name)
@@ -201,5 +196,14 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			node.getMetadata.put("contentType", "Course")
 		}
 		node
+	}
+
+	def getImportConfig(): ImportConfig = {
+		val requiredProps = Platform.getStringList("import.required_props", java.util.Arrays.asList("name", "code", "mimeType", "contentType", "artifactUrl", "framework")).asScala.toList
+		val validStages = Platform.getStringList("import.valid_stages", java.util.Arrays.asList("create", "upload", "review", "publish")).asScala.toList
+		val propsToRemove = Platform.getStringList("import.remove_props", java.util.Arrays.asList("downloadUrl", "variants", "previewUrl", "streamingUrl", "itemSets")).asScala.toList
+		val topicName = Platform.config.getString("import.output_topic_name")
+		val reqLimit = Platform.getInteger("import.request_size_limit", 200)
+		ImportConfig(topicName, reqLimit, requiredProps, validStages, propsToRemove)
 	}
 }

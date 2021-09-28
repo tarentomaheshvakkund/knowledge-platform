@@ -28,14 +28,13 @@ class StorageService {
                 val storageKey = Platform.config.getString("aws_storage_key")
                 val storageSecret = Platform.config.getString("aws_storage_secret")
                 storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret))
-            } else if (StringUtils.equalsIgnoreCase(storageType, "cephs3")) {
+            }
+            else if (StringUtils.equalsIgnoreCase(storageType, "cephs3")) {
                 val storageKey = Platform.config.getString("cephs3_storage_key")
                 val storageSecret = Platform.config.getString("cephs3_storage_secret")
                 val endpoint = Platform.config.getString("cephs3_storage_endpoint")
                 storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret, Option(endpoint)))
-
-            } 
-
+            }
             else throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Error while initialising cloud storage")
         }
         storageService
@@ -47,7 +46,7 @@ class StorageService {
         else if (StringUtils.equalsIgnoreCase(storageType, "aws"))
             Platform.config.getString("aws_storage_container")
         else if (StringUtils.equalsIgnoreCase(storageType, "cephs3"))
-            Platform.config.getString("cephs3_storage_container")   
+            Platform.config.getString("cephs3_storage_container")
         else
             throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Container name not configured.")
     }

@@ -11,5 +11,6 @@ object ActorNames {
     final val CHANNEL_ACTOR = "channelActor"
     final val CATEGORY_ACTOR = "categoryActor"
     final val ASSET_ACTOR = "assetActor"
+    final val APP_ACTOR = "appActor"
 
 }

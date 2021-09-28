@@ -77,4 +77,24 @@ class QuestionController @Inject()(@Named(ActorNames.QUESTION_ACTOR) questionAct
 		questionRequest.getContext.put("identifier", identifier)
 		getResult(ApiId.RETIRE_QUESTION, questionActor, questionRequest)
 	}
+
+	def importQuestion() = Action.async { implicit request =>
+		val headers = commonHeaders()
+		val body = requestBody()
+		body.putAll(headers)
+		val questionRequest = getRequest(body, headers, QuestionOperations.importQuestion.toString)
+		setRequestContext(questionRequest, version, objectType, schemaName)
+		getResult(ApiId.IMPORT_QUESTION, questionActor, questionRequest)
+	}
+
+	def systemUpdate(identifier: String) = Action.async { implicit request =>
+		val headers = commonHeaders()
+		val body = requestBody()
+		val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+		content.putAll(headers)
+		val questionRequest = getRequest(content, headers, QuestionOperations.systemUpdateQuestion.toString)
+		setRequestContext(questionRequest, version, objectType, schemaName)
+		questionRequest.getContext.put("identifier", identifier);
+		getResult(ApiId.SYSTEM_UPDATE_QUESTION, questionActor, questionRequest)
+	}
 }

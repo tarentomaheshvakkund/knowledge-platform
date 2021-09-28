@@ -3,8 +3,10 @@ import java.util
 
 import akka.actor.Props
 import org.scalamock.scalatest.MockFactory
+import org.sunbird.common.HttpUtil
+import org.sunbird.common.dto.{Property, Request, Response, ResponseHandler}
 import org.sunbird.common.dto.{Property, Request, Response}
-import org.sunbird.graph.dac.model.Node
+import org.sunbird.graph.dac.model.{Node, SearchCriteria}
 import org.sunbird.graph.utils.ScalaJsonUtils
 import org.sunbird.graph.{GraphService, OntologyEngineContext}
 import org.sunbird.kafka.client.KafkaClient
@@ -114,6 +116,55 @@ class QuestionActorTest extends BaseSpec with MockFactory {
 		request.getContext.put("identifier", "do1234")
 		request.putAll(mapAsJavaMap(Map( "versionKey" -> "1234", "description" -> "updated desc")))
 		request.setOperation("publishQuestion")
+		val response = callActor(request, Props(new QuestionActor()))
+		assert("successful".equals(response.getParams.getStatus))
+	}
+
+	it should "send events to kafka topic" in {
+		implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+		val kfClient = mock[KafkaClient]
+		val hUtil = mock[HttpUtil]
+		(oec.httpUtil _).expects().returns(hUtil)
+		val resp :Response = ResponseHandler.OK()
+		resp.put("question", new util.HashMap[String, AnyRef](){{
+			put("framework", "NCF")
+			put("channel", "test")
+		}})
+		(hUtil.get(_: String, _: String, _: util.Map[String, String])).expects(*, *, *).returns(resp)
+		(oec.kafkaClient _).expects().returns(kfClient)
+		(kfClient.send(_: String, _: String)).expects(*, *).returns(None)
+		val request = getQuestionRequest()
+		request.getRequest.put("question", new util.HashMap[String, AnyRef](){{
+			put("source", "https://dock.sunbirded.org/api/question/v1/read/do_11307822356267827219477")
+			put("metadata", new util.HashMap[String, AnyRef](){{
+				put("name", "Test Question")
+				put("description", "Test Question")
+				put("mimeType", "application/vnd.sunbird.question")
+				put("code", "test.ques.1")
+				put("primaryCategory", "Learning Resource")
+			}})
+		}})
+		request.setOperation("importQuestion")
+		request.setObjectType("Question")
+		val response = callActor(request, Props(new QuestionActor()))
+		assert(response.get("processId") != null)
+	}
+
+	it should "return success response for 'systemUpdateQuestion'" in {
+		implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+		val graphDB = mock[GraphService]
+		(oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+		val node = getNode("Question", None)
+		node.getMetadata.putAll(Map("versionKey" -> "1234", "primaryCategory" -> "Multiple Choice Question", "name" -> "Updated New Content", "code" -> "1234", "mimeType" -> "application/vnd.sunbird.question").asJava)
+		(graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+		(graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node)).anyNumberOfTimes()
+		(graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(List(node))).once()
+		(graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).atLeastOnce()
+		(graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("1234"))))
+		val request = getQuestionRequest()
+		request.getContext.put("identifier", "test_id")
+		request.putAll(mapAsJavaMap(Map("versionKey" -> "1234", "description" -> "updated desc")))
+		request.setOperation("systemUpdateQuestion")
 		val response = callActor(request, Props(new QuestionActor()))
 		assert("successful".equals(response.getParams.getStatus))
 	}

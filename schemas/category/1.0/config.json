@@ -12,5 +12,16 @@
     "update": [
       "identifier", "name"
     ]
-  }
+  },
+  "external": {},
+  "relations": {
+    "terms": {
+      "type": "hasSequenceMember",
+      "direction": "out",
+      "objects": [
+        "Term"
+      ]
+    }
+  },
+  "schema_restrict_api": false
 }
