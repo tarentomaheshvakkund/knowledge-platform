@@ -371,8 +371,12 @@ object UpdateHierarchyManager {
         val futures = childrenIds.map(child => {
             val id = child._1
             val index = child._2 + 1
-            TelemetryManager.info("Trying to get tempNode for ID: " + id)
             val tempNode = getTempNode(nodeList, id)
+            if(null != tempNode) {
+                TelemetryManager.info("tempNode is not null for ID: " + id)
+            } else {
+                TelemetryManager.info("tempNode is null for ID: " + id)
+            }
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
                 val nxtEnrichedNodeList = tempNode :: enrichedNodeList
