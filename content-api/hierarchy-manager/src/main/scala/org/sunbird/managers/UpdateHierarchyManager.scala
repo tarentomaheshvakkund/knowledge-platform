@@ -373,9 +373,9 @@ object UpdateHierarchyManager {
             val index = child._2 + 1
             val tempNode = getTempNode(nodeList, id)
             if(null != tempNode) {
-                TelemetryManager.info("tempNode is not null for ID: " + id)
+                TelemetryManager.info("tempNode is not null for ID: " + id  + ", parent ID: " + parent)
             } else {
-                TelemetryManager.info("tempNode is null for ID: " + id)
+                TelemetryManager.info("tempNode is null for ID: " + id  + ", parent ID: " + parent)
             }
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
