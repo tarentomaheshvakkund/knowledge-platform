@@ -368,6 +368,14 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     private def updateHierarchyRelatedData(childrenIds: Map[String, Int], depth: Int, parent: String, nodeList: List[Node], hierarchyStructure: Map[String, Map[String, Int]], enrichedNodeList: scala.collection.immutable.List[Node], request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[List[Node]] = {
+        TelemetryManager.info("NodeList Details...")
+        for(n <- nodeList) {
+            try {
+                TelemetryManager.info("NodeDetail :: " + ScalaJsonUtils.serialize(n))
+            } catch {
+                case e: Exception => TelemetryManager.info("Failed to print nodeDetail of Id::" + n.identifier)
+            }
+        }
         val futures = childrenIds.map(child => {
             val id = child._1
             val index = child._2 + 1
@@ -376,14 +384,6 @@ object UpdateHierarchyManager {
                 TelemetryManager.info("tempNode is not null for ID: " + id  + ", parent ID: " + parent)
             } else {
                 TelemetryManager.info("tempNode is null for ID: " + id  + ", parent ID: " + parent)
-            }
-            TelemetryManager.info("NodeList Details...")
-            for(n <- nodeList) {
-                try {
-                    TelemetryManager.info("NodeDetail :: " + ScalaJsonUtils.serialize(n))
-                } catch {
-                    case e: Exception => TelemetryManager.info("Failed to print nodeDetail")
-                }
             }
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
