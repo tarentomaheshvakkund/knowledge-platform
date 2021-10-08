@@ -373,7 +373,7 @@ object UpdateHierarchyManager {
             try {
                 TelemetryManager.info("NodeDetail :: " + ScalaJsonUtils.serialize(n))
             } catch {
-                case e: Exception => TelemetryManager.info("Failed to print nodeDetail of Id::" + n.identifier)
+                case e: Exception => TelemetryManager.info("Failed to print nodeDetail of Id::" + n.getIdentifier)
             }
         }
         val futures = childrenIds.map(child => {
