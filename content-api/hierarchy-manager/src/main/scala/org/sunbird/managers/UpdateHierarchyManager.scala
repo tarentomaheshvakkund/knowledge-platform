@@ -378,7 +378,7 @@ object UpdateHierarchyManager {
                 TelemetryManager.info("tempNode is null for ID: " + id  + ", parent ID: " + parent)
             }
             TelemetryManager.info("NodeList Details...")
-            nodeList.foreach(println)
+            for(n <- nodeList) TelemetryManager.info("Node Detail : " + JsonUtils.serialize(n))
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
                 val nxtEnrichedNodeList = tempNode :: enrichedNodeList
