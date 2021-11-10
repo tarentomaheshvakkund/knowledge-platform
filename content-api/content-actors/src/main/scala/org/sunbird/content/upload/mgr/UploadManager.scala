@@ -39,17 +39,17 @@ object UploadManager {
 		val mediaType = node.getMetadata.getOrDefault("mediaType", "").asInstanceOf[String]
 		val mgr = MimeTypeManagerFactory.getManager(node.getObjectType, mimeType)
 		val params: UploadParams = request.getContext.get("params").asInstanceOf[UploadParams]
-		println("upload->mimetype:" + mimeType);
-		println("upload->mediaType:" + mediaType);
-		println("upload->filePath:" + filePath);
+		println("UploadManager::upload->mimetype:" + mimeType);
+		println("UploadManager::upload->mediaType:" + mediaType);
+		println("UploadManager::upload->filePath:" + filePath);
 		val uploadFuture: Future[Map[String, AnyRef]] = if (StringUtils.isNotBlank(fileUrl)) mgr.upload(identifier, node, fileUrl, filePath, params) else mgr.upload(identifier, node, file, filePath, params)
-		println("upload->uploadFuture:" + uploadFuture);
+		println("UploadManager::upload->uploadFuture:" + uploadFuture);
 		uploadFuture.map(result => {
 			if(filePath.isDefined){
-				TelemetryManager.info("upload->filePath defined:");
+				println("UploadManager::upload->filePath defined:");
 				updateNode(request, node.getIdentifier, mediaType, node.getObjectType, result + (ContentConstants.ARTIFACT_BASE_PATH -> filePath.get))
 			}else{
-				TelemetryManager.info("upload->filePath else part:");
+				println("UploadManager::upload->filePath else part:");
 				updateNode(request, node.getIdentifier, mediaType, node.getObjectType, result)
 			}
 		}).flatMap(f => f)
@@ -58,8 +58,8 @@ object UploadManager {
 	def updateNode(request: Request, identifier: String, mediaType: String, objectType: String, result: Map[String, AnyRef])(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		val updatedResult = result - "identifier"
 		val artifactUrl = updatedResult.getOrElse("artifactUrl", "").asInstanceOf[String]
-		println("updateNode:updatedResult:" + updatedResult)
-		println("updateNode:artifactUrl:" + artifactUrl)
+		println("UploadManager::updateNode::updatedResult:" + updatedResult)
+		println("UploadManager::updateNode::artifactUrl:" + artifactUrl)
 		val size: Double = updatedResult.getOrElse("size", 0.asInstanceOf[Double]).asInstanceOf[Double]
 		println("updateNode:size:" + size)
 		if (StringUtils.isNotBlank(artifactUrl)) {
@@ -71,14 +71,14 @@ object UploadManager {
 				updateReq.put("contentDisposition", "online-only")
 			if (StringUtils.equalsIgnoreCase("Asset", objectType) && MEDIA_TYPE_LIST.contains(mediaType))
 				updateReq.put("status", "Processing")
-			println("updateNode:One:" + updateReq)
+			println("UploadManager::updateNode:One:" + updateReq)
 			DataNode.update(updateReq).map(node => {
 				if (StringUtils.equalsIgnoreCase("Asset", objectType) && MEDIA_TYPE_LIST.contains(mediaType) && null != node)
 					pushInstructionEvent(identifier, node)
 				getUploadResponse(node)
 			})
 		} else {
-			println("updateNode:Else part:" + artifactUrl)
+			println("UploadManager::updateNode:Else part:" + artifactUrl)
 			Future {
 				ResponseHandler.ERROR(ResponseCode.SERVER_ERROR, "ERR_UPLOAD_FILE", "Something Went Wrong While Processing Your Request.")
 			}
