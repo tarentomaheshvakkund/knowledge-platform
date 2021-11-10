@@ -14,6 +14,7 @@ import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.mimetype.factory.MimeTypeManagerFactory
 import org.sunbird.telemetry.util.LogTelemetryEventUtil
+import org.sunbird.telemetry.TelemetryManager
 
 import scala.collection.JavaConversions.mapAsJavaMap
 import scala.concurrent.{ExecutionContext, Future}
@@ -38,21 +39,32 @@ object UploadManager {
 		val mediaType = node.getMetadata.getOrDefault("mediaType", "").asInstanceOf[String]
 		val mgr = MimeTypeManagerFactory.getManager(node.getObjectType, mimeType)
 		val params: UploadParams = request.getContext.get("params").asInstanceOf[UploadParams]
+		TelemetryManager.info("upload->mimetype:" + mimeType);
+		TelemetryManager.info("upload->mediaType:" + mediaType);
+		TelemetryManager.info("upload->filePath:" + filePath);
 		val uploadFuture: Future[Map[String, AnyRef]] = if (StringUtils.isNotBlank(fileUrl)) mgr.upload(identifier, node, fileUrl, filePath, params) else mgr.upload(identifier, node, file, filePath, params)
+		TelemetryManager.info("upload->uploadFuture:" + uploadFuture);
 		uploadFuture.map(result => {
-			if(filePath.isDefined)
+			if(filePath.isDefined){
+				TelemetryManager.info("upload->filePath defined:");
 				updateNode(request, node.getIdentifier, mediaType, node.getObjectType, result + (ContentConstants.ARTIFACT_BASE_PATH -> filePath.get))
-			else
+			}else{
+				TelemetryManager.info("upload->filePath else part:");
 				updateNode(request, node.getIdentifier, mediaType, node.getObjectType, result)
+			}
 		}).flatMap(f => f)
 	}
 
 	def updateNode(request: Request, identifier: String, mediaType: String, objectType: String, result: Map[String, AnyRef])(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		val updatedResult = result - "identifier"
 		val artifactUrl = updatedResult.getOrElse("artifactUrl", "").asInstanceOf[String]
+		TelemetryManager.info("updateNode:updatedResult:" + updatedResult);
+		TelemetryManager.info("updateNode:artifactUrl:" + artifactUrl);
 		val size: Double = updatedResult.getOrElse("size", 0.asInstanceOf[Double]).asInstanceOf[Double]
+		TelemetryManager.info("updateNode:size:" + size);
 		if (StringUtils.isNotBlank(artifactUrl)) {
 			val updateReq = new Request(request)
+			TelemetryManager.info("updateNode->if part->updateReq" + updateReq);
 			updateReq.getContext().put("identifier", identifier)
 			updateReq.getRequest.putAll(mapAsJavaMap(updatedResult))
 			if( size > CONTENT_ARTIFACT_ONLINE_SIZE)
@@ -66,6 +78,7 @@ object UploadManager {
 				getUploadResponse(node)
 			})
 		} else {
+			TelemetryManager.info("updateNode:Else part:" + artifactUrl);
 			Future {
 				ResponseHandler.ERROR(ResponseCode.SERVER_ERROR, "ERR_UPLOAD_FILE", "Something Went Wrong While Processing Your Request.")
 			}
