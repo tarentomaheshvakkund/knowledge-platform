@@ -20,10 +20,13 @@ class HtmlMimeTypeMgrImpl(implicit ss: StorageService) extends BaseMimeTypeManag
         val flag: Boolean = if (indexHtmlValidation) isValidPackageStructure(uploadFile, List[String]("index.html")) else true
         if (flag) {
             val urls = uploadArtifactToCloud(uploadFile, objectId, filePath)
+            TelemetryManager.info("uploadArtifactToCloud Success to cloud with the URL's" + urls)
             node.getMetadata.put("s3Key", urls(IDX_S3_KEY))
             node.getMetadata.put("artifactUrl", urls(IDX_S3_URL))
             extractPackageInCloud(objectId, uploadFile, node, "snapshot", false)
+            TelemetryManager.info("Package extracted in cloud artifacturl" + urls(IDX_S3_URL))
             Future(Map[String, AnyRef]("identifier" -> objectId, "artifactUrl" -> urls(IDX_S3_URL), "s3Key" -> urls(IDX_S3_KEY), "size" -> getFileSize(uploadFile).asInstanceOf[AnyRef]))
+            lemetryManager.info("Upload Complete")
         } else {
             TelemetryManager.error("ERR_INVALID_FILE" + "Please Provide Valid File! with file name: " + uploadFile.getName)
             throw new ClientException("ERR_INVALID_FILE", "Please Provide Valid File!")
