@@ -39,11 +39,11 @@ object UploadManager {
 		val mediaType = node.getMetadata.getOrDefault("mediaType", "").asInstanceOf[String]
 		val mgr = MimeTypeManagerFactory.getManager(node.getObjectType, mimeType)
 		val params: UploadParams = request.getContext.get("params").asInstanceOf[UploadParams]
-		TelemetryManager.info("upload->mimetype:" + mimeType);
-		TelemetryManager.info("upload->mediaType:" + mediaType);
-		TelemetryManager.info("upload->filePath:" + filePath);
+		println("upload->mimetype:" + mimeType);
+		println("upload->mediaType:" + mediaType);
+		println("upload->filePath:" + filePath);
 		val uploadFuture: Future[Map[String, AnyRef]] = if (StringUtils.isNotBlank(fileUrl)) mgr.upload(identifier, node, fileUrl, filePath, params) else mgr.upload(identifier, node, file, filePath, params)
-		TelemetryManager.info("upload->uploadFuture:" + uploadFuture);
+		println("upload->uploadFuture:" + uploadFuture);
 		uploadFuture.map(result => {
 			if(filePath.isDefined){
 				TelemetryManager.info("upload->filePath defined:");
@@ -58,27 +58,28 @@ object UploadManager {
 	def updateNode(request: Request, identifier: String, mediaType: String, objectType: String, result: Map[String, AnyRef])(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		val updatedResult = result - "identifier"
 		val artifactUrl = updatedResult.getOrElse("artifactUrl", "").asInstanceOf[String]
-		TelemetryManager.info("updateNode:updatedResult:" + updatedResult);
-		TelemetryManager.info("updateNode:artifactUrl:" + artifactUrl);
+		println("updateNode:updatedResult:" + updatedResult)
+		println("updateNode:artifactUrl:" + artifactUrl)
 		val size: Double = updatedResult.getOrElse("size", 0.asInstanceOf[Double]).asInstanceOf[Double]
-		TelemetryManager.info("updateNode:size:" + size);
+		println("updateNode:size:" + size)
 		if (StringUtils.isNotBlank(artifactUrl)) {
 			val updateReq = new Request(request)
-			TelemetryManager.info("updateNode->if part->updateReq" + updateReq);
+			println("updateNode->if part->updateReq" + updateReq)
 			updateReq.getContext().put("identifier", identifier)
 			updateReq.getRequest.putAll(mapAsJavaMap(updatedResult))
 			if( size > CONTENT_ARTIFACT_ONLINE_SIZE)
 				updateReq.put("contentDisposition", "online-only")
 			if (StringUtils.equalsIgnoreCase("Asset", objectType) && MEDIA_TYPE_LIST.contains(mediaType))
 				updateReq.put("status", "Processing")
-
+			println("updateNode:One:" + updateReq)
 			DataNode.update(updateReq).map(node => {
 				if (StringUtils.equalsIgnoreCase("Asset", objectType) && MEDIA_TYPE_LIST.contains(mediaType) && null != node)
 					pushInstructionEvent(identifier, node)
 				getUploadResponse(node)
+			println("updateNode:Complete:")
 			})
 		} else {
-			TelemetryManager.info("updateNode:Else part:" + artifactUrl);
+			println("updateNode:Else part:" + artifactUrl);
 			Future {
 				ResponseHandler.ERROR(ResponseCode.SERVER_ERROR, "ERR_UPLOAD_FILE", "Something Went Wrong While Processing Your Request.")
 			}
@@ -94,6 +95,7 @@ object UploadManager {
 		response.put("artifactUrl", url)
 		response.put("content_url", url)
 		response.put("versionKey", node.getMetadata.get("versionKey"))
+		println("getUploadResponse:::upload response:: " + response)
 		response
 	}
 
@@ -106,6 +108,7 @@ object UploadManager {
 		generateInstructionEventMetadata(actor, context, objectData, edata, node, identifier)
 		val beJobRequestEvent: String = LogTelemetryEventUtil.logInstructionEvent(actor, context, objectData, edata)
 		val topic: String = Platform.getString("kafka.topics.instruction","sunbirddev.learning.job.request")
+		println("inside pushInstructionEvent::" +node)
 		if (StringUtils.isBlank(beJobRequestEvent)) throw new ClientException("BE_JOB_REQUEST_EXCEPTION", "Event is not generated properly.")
 		kfClient.send(beJobRequestEvent, topic)
 	}
