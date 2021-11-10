@@ -77,7 +77,6 @@ object UploadManager {
 					pushInstructionEvent(identifier, node)
 				getUploadResponse(node)
 			})
-			println("updateNode:Complete::" + updateReq)
 		} else {
 			println("updateNode:Else part:" + artifactUrl)
 			Future {
