@@ -77,10 +77,9 @@ object UploadManager {
 					pushInstructionEvent(identifier, node)
 				getUploadResponse(node)
 			})
-			
-			println("updateNode:Complete:")
+			println("updateNode:Complete::" + updateReq)
 		} else {
-			println("updateNode:Else part:" + artifactUrl);
+			println("updateNode:Else part:" + artifactUrl)
 			Future {
 				ResponseHandler.ERROR(ResponseCode.SERVER_ERROR, "ERR_UPLOAD_FILE", "Something Went Wrong While Processing Your Request.")
 			}
