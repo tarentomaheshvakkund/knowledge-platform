@@ -14,7 +14,7 @@ import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.mimetype.factory.MimeTypeManagerFactory
 import org.sunbird.telemetry.util.LogTelemetryEventUtil
-import org.sunbird.telemetry.TelemetryManager
+import org.sunbird.telemetry.logger.TelemetryManager
 
 import scala.collection.JavaConversions.mapAsJavaMap
 import scala.concurrent.{ExecutionContext, Future}
