@@ -76,8 +76,9 @@ object UploadManager {
 				if (StringUtils.equalsIgnoreCase("Asset", objectType) && MEDIA_TYPE_LIST.contains(mediaType) && null != node)
 					pushInstructionEvent(identifier, node)
 				getUploadResponse(node)
-			println("updateNode:Complete:")
 			})
+			
+			println("updateNode:Complete:")
 		} else {
 			println("updateNode:Else part:" + artifactUrl);
 			Future {
