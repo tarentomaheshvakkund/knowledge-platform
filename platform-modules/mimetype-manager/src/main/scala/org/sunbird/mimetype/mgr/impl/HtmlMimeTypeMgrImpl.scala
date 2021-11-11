@@ -9,6 +9,7 @@ import org.sunbird.graph.dac.model.Node
 import org.sunbird.mimetype.mgr.{BaseMimeTypeManager, MimeTypeManager}
 import org.sunbird.telemetry.logger.TelemetryManager
 import org.sunbird.common.Platform
+import java.time.LocalDateTime
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -20,11 +21,11 @@ class HtmlMimeTypeMgrImpl(implicit ss: StorageService) extends BaseMimeTypeManag
         val flag: Boolean = if (indexHtmlValidation) isValidPackageStructure(uploadFile, List[String]("index.html")) else true
         if (flag) {
             val urls = uploadArtifactToCloud(uploadFile, objectId, filePath)
-            println("HtmlMimeTypeMgrImpl::uploadArtifactToCloud Success to cloud with the URL's::" + urls)
+            println("HtmlMimeTypeMgrImpl::uploadArtifactToCloud Success to cloud with the URL's::" + LocalDateTime.now().toString "::" + urls)
             node.getMetadata.put("s3Key", urls(IDX_S3_KEY))
             node.getMetadata.put("artifactUrl", urls(IDX_S3_URL))
             extractPackageInCloud(objectId, uploadFile, node, "snapshot", false)
-            println("HtmlMimeTypeMgrImpl:::Package extracted in cloud artifacturl:::" + urls(IDX_S3_URL))
+            println("HtmlMimeTypeMgrImpl:::Package extracted in cloud artifacturl:::" + LocalDateTime.now().toString "::" + urls(IDX_S3_URL))
             Future(Map[String, AnyRef]("identifier" -> objectId, "artifactUrl" -> urls(IDX_S3_URL), "s3Key" -> urls(IDX_S3_KEY), "size" -> getFileSize(uploadFile).asInstanceOf[AnyRef]))
         } else {
             TelemetryManager.error("ERR_INVALID_FILE" + "Please Provide Valid File! with file name: " + uploadFile.getName)
