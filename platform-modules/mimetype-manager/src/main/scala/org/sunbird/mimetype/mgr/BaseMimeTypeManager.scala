@@ -4,6 +4,7 @@ import java.io.{File, FileInputStream, FileOutputStream, IOException}
 import java.net.URL
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.{ZipEntry, ZipFile, ZipOutputStream}
+import java.time.LocalDateTime
 
 import org.apache.commons.io.{FileUtils, FilenameUtils}
 import org.apache.commons.lang3.StringUtils
@@ -68,8 +69,10 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 	def uploadArtifactToCloud(uploadedFile: File, identifier: String, filePath: Option[String] = None): Array[String] = {
 		var urlArray = new Array[String](2)
 		try {
+			println("BaseMimeTypeManager::uploadArtifactToCloud::Start::" + LocalDateTime.now().toString)
 			val folder = if(filePath.isDefined) filePath.get + File.separator + Platform.getString(CONTENT_FOLDER, "content") + File.separator + Slug.makeSlug(identifier, true) + File.separator + Platform.getString(ARTIFACT_FOLDER, "artifact") else Platform.getString(CONTENT_FOLDER, "content") + File.separator + Slug.makeSlug(identifier, true) + File.separator + Platform.getString(ARTIFACT_FOLDER, "artifact")
 			urlArray = ss.uploadFile(folder, uploadedFile)
+			println("BaseMimeTypeManager::uploadArtifactToCloud::end::" + LocalDateTime.now().toString)
 		} catch {
 			case e: Exception =>
 				TelemetryManager.error("Error while uploading the file.", e)
@@ -130,6 +133,7 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 	}
 
 	def extractPackage(file: File, basePath: String) = {
+		println("BaseMimeTypeManager::extractPackage::Start::" + LocalDateTime.now().toString)
 		val zipFile = new ZipFile(file)
 		for (entry <- zipFile.entries().asScala) {
 			val path = Paths.get(basePath + File.separator + entry.getName)
@@ -139,6 +143,7 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 				Files.copy(zipFile.getInputStream(entry), path)
 			}
 		}
+		println("BaseMimeTypeManager::extractPackage::End::" + LocalDateTime.now().toString)
 	}
 
 	protected def getCloudStoredFileSize(key: String)(implicit ss: StorageService): Double = {
@@ -183,6 +188,8 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 
 	def getExtractionPath(objectId: String, node: Node, extractionType: String, mimeType: String): String = {
 		val baseFolder = Platform.config.getString(CONTENT_FOLDER)
+		println("BaseMimeTypeManager::getExtractionPath::Start::" + LocalDateTime.now().toString)
+
 		val pathSuffix: String = {
 			if(extractionType.equalsIgnoreCase("version")) {
 				val version = String.valueOf(node.getMetadata.get("pkgVersion").asInstanceOf[Double])
@@ -199,17 +206,23 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 			case "application/vnd.ekstep.plugin-archive" => CONTENT_PLUGINS + File.separator + objectId + DASH + pathSuffix
 			case _ => ""
 		}
+		println("BaseMimeTypeManager::getExtractionPath::End::" + LocalDateTime.now().toString)
 	}
 
 	def extractPackageInCloud(objectId: String, uploadFile: File, node: Node, extractionType: String, slugFile: Boolean)(implicit ss: StorageService) = {
+		println("BaseMimeTypeManager::extractPackageInCloud::Start::" + LocalDateTime.now().toString)
 		val file = Slug.createSlugFile(uploadFile)
 		val mimeType = node.getMetadata.get("mimeType").asInstanceOf[String]
 		validationForCloudExtraction(file, extractionType, mimeType)
 		if(extractableMimeTypes.contains(mimeType)){
 			val extractionBasePath = getBasePath(objectId)
 				extractPackage(file, extractionBasePath)
+				println("BaseMimeTypeManager::uploadDirectory::Start::" + LocalDateTime.now().toString)
 				ss.uploadDirectory(getExtractionPath(objectId, node, extractionType, mimeType), new File(extractionBasePath), Option(slugFile))
+				println("BaseMimeTypeManager::uploadDirectory::End::" + LocalDateTime.now().toString)
 		}
+		println("BaseMimeTypeManager::extractPackageInCloud::end::" + LocalDateTime.now().toString)
+
 	}
 
 	def extractH5PPackageInCloud(objectId: String, extractionBasePath: String, node: Node, extractionType: String, slugFile: Boolean)(implicit ec: ExecutionContext): Future[List[String]] = {
