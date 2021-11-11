@@ -198,6 +198,7 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 				} else version
 			}else extractionType
 		}
+		println("BaseMimeTypeManager::getExtractionPath::End::" + LocalDateTime.now().toString+ "::" + baseFolder + File.separator + "html" + File.separator + objectId + DASH + pathSuffix)
 
 		mimeType match {
 			case "application/vnd.ekstep.ecml-archive" => baseFolder + File.separator + "ecml" + File.separator + objectId + DASH + pathSuffix
@@ -206,7 +207,6 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 			case "application/vnd.ekstep.plugin-archive" => CONTENT_PLUGINS + File.separator + objectId + DASH + pathSuffix
 			case _ => ""
 		}
-		println("BaseMimeTypeManager::getExtractionPath::End::" + LocalDateTime.now().toString)
 	}
 
 	def extractPackageInCloud(objectId: String, uploadFile: File, node: Node, extractionType: String, slugFile: Boolean)(implicit ss: StorageService) = {
