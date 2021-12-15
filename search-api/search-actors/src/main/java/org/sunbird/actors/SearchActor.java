@@ -238,12 +238,12 @@ public class SearchActor extends SearchBaseActor {
             // Changing fields to null so that search all fields but returns
             // only the fields specified
             properties.addAll(getSearchQueryProperties(queryString, null));
-            properties.addAll(getSearchFilterProperties(filters, wordChainsRequest));
+            properties.addAll(getSearchFilterProperties(filters, wordChainsRequest, request));
             searchObj.setSortBy(sortBy);
             searchObj.setFacets(facets);
             searchObj.setProperties(properties);
             if(multiFilters!=null){
-                multiFilterProperties.addAll(getSearchFilterProperties(multiFilters, wordChainsRequest));
+                multiFilterProperties.addAll(getSearchFilterProperties(multiFilters, wordChainsRequest, null));
                 searchObj.setMultiFilterProperties(multiFilterProperties);
             }
             // Added Implicit Filter Properties To Support Collection content tagging to reuse by tenants.
@@ -373,7 +373,7 @@ public class SearchActor extends SearchBaseActor {
     }
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
-    private List<Map<String, Object>> getSearchFilterProperties(Map<String, Object> filters, Boolean traversal)
+    private List<Map<String, Object>> getSearchFilterProperties(Map<String, Object> filters, Boolean traversal, Request request)
             throws Exception {
         List<Map<String, Object>> properties = new ArrayList<Map<String, Object>>();
         if (null == filters) filters = new HashMap<String, Object>();
@@ -522,7 +522,7 @@ public class SearchActor extends SearchBaseActor {
             properties.add(property);
         }
 
-        if (setDefaultVisibility(filters)) {
+        if (request != null && !StringUtils.equalsIgnoreCase((String) request.getContext().getOrDefault("setDefaultVisibility",""),"false")  && setDefaultVisibility(filters)) {
             Map<String, Object> property = getFilterProperty("visibility", SearchConstants.SEARCH_OPERATION_EQUAL, Arrays.asList(new String[] { "Default" }));
             properties.add(property);
         }
@@ -684,7 +684,7 @@ public class SearchActor extends SearchBaseActor {
                     contentIds.add((String) content.get("identifier"));
                 }
 
-                Request request = new Request();
+                Request request = new Request(parentRequest);
                 Map<String, Object> filters = new HashMap<String, Object>();
                 List<String> objectTypes = new ArrayList<String>();
                 objectTypes.add("Content");
@@ -774,7 +774,7 @@ public class SearchActor extends SearchBaseActor {
                 }
             }
             List<Map> implicitFilterProps = new ArrayList<Map>();
-            implicitFilterProps.addAll(getSearchFilterProperties(implicitFilter, false));
+            implicitFilterProps.addAll(getSearchFilterProperties(implicitFilter, false, null));
             searchObj.setImplicitFilterProperties(implicitFilterProps);
         }
     }

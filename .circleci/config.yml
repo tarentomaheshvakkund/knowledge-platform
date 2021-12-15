@@ -35,14 +35,12 @@ jobs:
             mkdir -p ~/test-results/junit/
             find . -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} ~/test-results/junit/ \;
           when: always
-      - store_test_results:
-          path: ~/test-results
-      - store_artifacts:
-          path: ~/test-results/junit
       - save_cache:
           paths:
             - ~/.m2
           key: kp-dependency-test-cache-{{ checksum "pom.xml" }}
+      - store_test_results:
+          path: ~/test-results
 
 workflows:
   version: 2.1

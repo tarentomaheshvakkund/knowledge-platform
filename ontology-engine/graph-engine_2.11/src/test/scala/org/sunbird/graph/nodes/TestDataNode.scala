@@ -7,7 +7,7 @@ import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.JsonUtils
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResourceNotFoundException}
-import org.sunbird.graph.{BaseSpec, OntologyEngineContext}
+import org.sunbird.graph.BaseSpec
 import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.utils.ScalaJsonUtils
 
@@ -24,7 +24,29 @@ class TestDataNode extends BaseSpec {
             put("schemaName", "content")
         }}
     }
-    "createNode" should "create a node successfully" in {
+    "createNode with fetching FrameworkMasterCategoryMap from DB" should "create a node successfully" in {
+        val request = new Request()
+        request.setObjectType("Content")
+        request.setContext(getContextMap())
+
+        request.put("code", "test")
+        request.put("name", "testResource")
+        request.put("mimeType", "application/pdf")
+        request.put("contentType", "Resource")
+        request.put("description", "test")
+        request.put("channel", "in.ekstep")
+        request.put("primaryCategory", "Learning Resource")
+        val future: Future[Node] = DataNode.create(request,dataModifier)
+        future map {node => {assert(null != node)
+            print("Create Node - Fetch Category from DB: " + node)
+
+            assert(node.getMetadata.get("name").asInstanceOf[String].equalsIgnoreCase("testResource"))
+            assert(node.getMetadata.get("trackable").asInstanceOf[String].contains("{\"enabled\":\"No\",\"autoBatch\":\"No\"}"))
+            assert(node.getMetadata.get("contentType").asInstanceOf[String].equalsIgnoreCase("Resource"))}}
+    }
+
+    "createNode with enriching FrameworkMasterCategoryMap" should "create a node successfully" in {
+        enrichFrameworkMasterCategoryMap()
         val request = new Request()
         request.setObjectType("Content")
         request.setContext(getContextMap())
@@ -44,7 +66,6 @@ class TestDataNode extends BaseSpec {
             assert(node.getMetadata.get("trackable").asInstanceOf[String].contains("{\"enabled\":\"No\",\"autoBatch\":\"No\"}"))
             assert(node.getMetadata.get("contentType").asInstanceOf[String].equalsIgnoreCase("Resource"))}}
     }
-
 
     "createNode with relation" should "create a node successfully" in {
         createRelationData()
@@ -682,6 +703,33 @@ class TestDataNode extends BaseSpec {
             }
         }
         } flatMap (f => f)
+    }
+
+    "search" should "read data for all identifier" in {
+        executeNeo4jQuery("CREATE (n:domain{IL_UNIQUE_ID:'do_12345',IL_FUNC_OBJECT_TYPE:'Content',status:'Live',ownershipType:[\"createdBy\"],copyright:\"Sunbird\",previewUrl:\"https://sunbirddev.blob.core.windows.net/sunbird-content-dev/content/ecml/do_1129067102240194561252-latest\"});")
+        val request = new Request()
+        request.setObjectType("Content")
+        request.setContext(getContextMap())
+        request.put("identifiers", util.Arrays.asList("do_12345"))
+        request.put("identifier", util.Arrays.asList("do_12345"))
+        request.put("fields", util.Arrays.asList())
+        val future: Future[List[Node]] = DataNode.search(request)
+        future map { nodeList => {
+            assert(nodeList.length == 1)
+            assert(nodeList.head.getIdentifier.equalsIgnoreCase("do_12345"))
+        }
+        } flatMap (f => f)
+    }
+
+    "search" should "throw Exception for invalid identifier" in {
+        executeNeo4jQuery("CREATE (n:domain{IL_UNIQUE_ID:'do_62146325',IL_FUNC_OBJECT_TYPE:'Content',status:'Live',ownershipType:[\"createdBy\"],copyright:\"Sunbird\",previewUrl:\"https://sunbirddev.blob.core.windows.net/sunbird-content-dev/content/ecml/do_1129067102240194561252-latest\"});")
+        val request = new Request()
+        request.setObjectType("Content")
+        request.setContext(getContextMap())
+        request.put("identifiers", util.Arrays.asList("do_62146325", "do_123579"))
+        request.put("identifier", util.Arrays.asList("do_62146325", "do_123579"))
+        request.put("fields", util.Arrays.asList())
+        recoverToSucceededIf[ClientException](DataNode.search(request))
     }
 
     def getHierarchy(request: Request) : Future[Response] = {

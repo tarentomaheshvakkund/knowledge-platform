@@ -16,12 +16,15 @@ import org.sunbird.common.{ContentParams, Platform, Slug}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.ClientException
 import org.sunbird.content.dial.DIALManager
+import org.sunbird.content.review.mgr.ReviewManager
 import org.sunbird.util.RequestUtil
 import org.sunbird.content.upload.mgr.UploadManager
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.NodeUtil
+import org.sunbird.managers.HierarchyManager
+import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -37,6 +40,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		request.getOperation match {
 			case "createContent" => create(request)
 			case "readContent" => read(request)
+			case "readPrivateContent" => privateRead(request)
 			case "updateContent" => update(request)
 			case "uploadContent" => upload(request)
 			case "retireContent" => retire(request)
@@ -47,6 +51,9 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "acceptFlag" => acceptFlag(request)
 			case "linkDIALCode" => linkDIALCode(request)
 			case "importContent" => importContent(request)
+			case "systemUpdate" => systemUpdate(request)
+			case "reviewContent" => reviewContent(request)
+			case "rejectContent" => rejectContent(request)
 			case _ => ERROR(request.getOperation)
 		}
 	}
@@ -74,7 +81,36 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
       else {
         response.put(responseSchemaName, metadata)
       }
-			response
+			if(!StringUtils.equalsIgnoreCase(metadata.get("visibility").asInstanceOf[String],"Private")) {
+				response
+			}
+			else {
+				throw new ClientException("ERR_ACCESS_DENIED", "content visibility is private, hence access denied")
+			}
+		})
+	}
+
+	def privateRead(request: Request): Future[Response] = {
+		val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+		val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+		request.getRequest.put("fields", fields)
+		if (StringUtils.isBlank(request.getRequest.getOrDefault("channel", "").asInstanceOf[String])) throw new ClientException("ERR_INVALID_CHANNEL", "Please Provide Channel!")
+		DataNode.read(request).map(node => {
+			val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
+			metadata.put("identifier", node.getIdentifier.replace(".img", ""))
+			val response: Response = ResponseHandler.OK
+				if (StringUtils.equalsIgnoreCase(metadata.getOrDefault("channel", "").asInstanceOf[String],request.getRequest.getOrDefault("channel", "").asInstanceOf[String])) {
+					if (responseSchemaName.isEmpty) {
+						response.put("content", metadata)
+					}
+					else {
+						response.put(responseSchemaName, metadata)
+					}
+					response
+				}
+				else {
+					throw new ClientException("ERR_ACCESS_DENIED", "Channel id is not matched")
+				}
 		})
 	}
 
@@ -143,6 +179,20 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 
 	def importContent(request: Request): Future[Response] = importMgr.importObject(request)
 
+	def reviewContent(request: Request): Future[Response] = {
+		val identifier: String = request.getContext.getOrDefault("identifier", "").asInstanceOf[String]
+		val readReq = new Request(request)
+		readReq.put("identifier", identifier)
+		readReq.put("mode", "edit")
+		DataNode.read(readReq).map(node => {
+			if (null != node & StringUtils.isNotBlank(node.getObjectType))
+				request.getContext.put("schemaName", node.getObjectType.toLowerCase())
+			if (StringUtils.equalsAnyIgnoreCase("Processing", node.getMetadata.getOrDefault("status", "").asInstanceOf[String]))
+				throw new ClientException("ERR_NODE_ACCESS_DENIED", "Review Operation Can't Be Applied On Node Under Processing State")
+			else ReviewManager.review(request, node)
+		}).flatMap(f => f)
+	}
+
 	def populateDefaultersForCreation(request: Request) = {
 		setDefaultsBasedOnMimeType(request, ContentParams.create.name)
 		setDefaultLicense(request)
@@ -153,7 +203,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val cacheKey = "channel_" + request.getRequest.getOrDefault("channel", "").asInstanceOf[String] + "_license"
 			val defaultLicense = RedisCache.get(cacheKey, null, 0)
 			if (StringUtils.isNotEmpty(defaultLicense)) request.getRequest.put("license", defaultLicense)
-			else System.out.println("Default License is not available for channel: " + request.getRequest.getOrDefault("channel", "").asInstanceOf[String])
+			else println("Default License is not available for channel: " + request.getRequest.getOrDefault("channel", "").asInstanceOf[String])
 		}
 	}
 
@@ -205,4 +255,54 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val reqLimit = Platform.getInteger("import.request_size_limit", 200)
 		ImportConfig(topicName, reqLimit, requiredProps, validStages, propsToRemove)
 	}
+
+	def systemUpdate(request: Request): Future[Response] = {
+		val identifier = request.getContext.get("identifier").asInstanceOf[String]
+		RequestUtil.validateRequest(request)
+		RedisCache.delete(hierarchyPrefix + request.get("rootId"))
+
+		val readReq = new Request(request)
+		val identifiers = new util.ArrayList[String](){{
+			add(identifier)
+			if (!identifier.endsWith(".img"))
+				add(identifier.concat(".img"))
+		}}
+		readReq.put("identifiers", identifiers)
+		DataNode.list(readReq).flatMap(response => {
+			val objectType = request.getContext.get("objectType").asInstanceOf[String]
+			if (objectType.toLowerCase.equals("collection"))
+				DataNode.systemUpdate(request, response, "content", Option(HierarchyManager.getHierarchy))
+			else
+				DataNode.systemUpdate(request, response,"", None)
+		}).map(node => {
+			ResponseHandler.OK.put("identifier", identifier).put("status", "success")
+		})
+	}
+
+	def rejectContent(request: Request): Future[Response] = {
+		RequestUtil.validateRequest(request)
+		DataNode.read(request).map(node => {
+			val status = node.getMetadata.get("status").asInstanceOf[String]
+			if (StringUtils.isBlank(status))
+				throw new ClientException("ERR_METADATA_ISSUE", "Content metadata error, status is blank for identifier:" + node.getIdentifier)
+      if (StringUtils.equals("Review", status)) {
+        request.getRequest.put("status", "Draft")
+				request.getRequest.put("prevStatus", "Review")
+      } else if (StringUtils.equals("FlagReview", status)) {
+        request.getRequest.put("status", "FlagDraft")
+				request.getRequest.put("prevStatus", "FlagReview")
+			}
+      else new ClientException("ERR_INVALID_REQUEST", "Content not in Review status.")
+
+			request.getRequest.put("versionKey", node.getMetadata.get("versionKey"))
+			request.putIn("publishChecklist", null).putIn("publishComment", null)
+      //updating node after changing the status
+			RequestUtil.restrictProperties(request)
+			DataNode.update(request).map(node => {
+				val identifier: String = node.getIdentifier.replace(".img", "")
+				ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
+			})
+		}).flatMap(f => f)
+	}
+
 }

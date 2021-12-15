@@ -1,27 +1,37 @@
 package org.sunbird.graph.schema.validator
 
 import java.util
-
+import java.util.concurrent.CompletionException
 import org.apache.commons.collections4.CollectionUtils
 import org.apache.commons.lang3.StringUtils
+import org.slf4j.LoggerFactory
 import org.sunbird.cache.impl.RedisCache
+import org.sunbird.common.Platform
 import org.sunbird.common.exception.{ClientException, ResourceNotFoundException, ServerException}
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.common.enums.SystemProperties
 import org.sunbird.graph.dac.model._
-import org.sunbird.graph.schema.IDefinition
+import org.sunbird.graph.schema.{FrameworkMasterCategoryMap, IDefinition}
 
+import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.collection.Map
 import scala.concurrent.{ExecutionContext, Future}
 
 trait FrameworkValidator extends IDefinition {
 
+  val logger = LoggerFactory.getLogger("org.sunbird.graph.schema.validator.FrameworkValidator")
+
   @throws[Exception]
   abstract override def validate(node: Node, operation: String, setDefaultValue: Boolean)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
-      val fwCategories: List[String] = schemaValidator.getConfig.getStringList("frameworkCategories").asScala.toList
-      val orgFwTerms: List[String] = schemaValidator.getConfig.getStringList("orgFrameworkTerms").asScala.toList
-      val targetFwTerms: List[String] = schemaValidator.getConfig.getStringList("targetFrameworkTerms").asScala.toList
+    val fwCategories: List[String] = schemaValidator.getConfig.getStringList("frameworkCategories").asScala.toList
+    val graphId: String = if(StringUtils.isNotBlank(node.getGraphId)) node.getGraphId else "domain"
+    val orgAndTargetFWData: Future[(List[String], List[String])] = if(StringUtils.equalsIgnoreCase(Platform.getString("master.category.validation.enabled", "Yes"), "Yes")) getOrgAndTargetFWData(graphId, "Category") else Future(List(), List())
+
+    orgAndTargetFWData.map(orgAndTargetTouple => {
+      val orgFwTerms = orgAndTargetTouple._1
+      val targetFwTerms = orgAndTargetTouple._2
+
       validateAndSetMultiFrameworks(node, orgFwTerms, targetFwTerms).map(_ => {
         val framework: String = node.getMetadata.getOrDefault("framework", "").asInstanceOf[String]
         if (null != fwCategories && fwCategories.nonEmpty && framework.nonEmpty) {
@@ -56,20 +66,21 @@ trait FrameworkValidator extends IDefinition {
         }
         super.validate(node, operation)
       }).flatMap(f => f)
+    }).flatMap(f => f)
   }
 
   private def validateAndSetMultiFrameworks(node: Node, orgFwTerms: List[String], targetFwTerms: List[String])(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Map[String, AnyRef]] = {
     getValidatedTerms(node, orgFwTerms).map(orgTermMap => {
       val boards = fetchValidatedList(getList("boardIds", node), orgTermMap)
-      if (CollectionUtils.isNotEmpty(boards)) node.getMetadata.putIfAbsent("board", boards.get(0))
+      if (CollectionUtils.isNotEmpty(boards)) node.getMetadata.put("board", boards.get(0))
       val mediums = fetchValidatedList(getList("mediumIds", node), orgTermMap)
-      if (CollectionUtils.isNotEmpty(mediums)) node.getMetadata.putIfAbsent("medium", mediums)
+      if (CollectionUtils.isNotEmpty(mediums)) node.getMetadata.put("medium", mediums)
       val subjects = fetchValidatedList(getList("subjectIds", node), orgTermMap)
-      if (CollectionUtils.isNotEmpty(subjects)) node.getMetadata.putIfAbsent("subject", subjects)
+      if (CollectionUtils.isNotEmpty(subjects)) node.getMetadata.put("subject", subjects)
       val grades = fetchValidatedList(getList("gradeLevelIds", node), orgTermMap)
-      if (CollectionUtils.isNotEmpty(grades)) node.getMetadata.putIfAbsent("gradeLevel", grades)
+      if (CollectionUtils.isNotEmpty(grades)) node.getMetadata.put("gradeLevel", grades)
       val topics = fetchValidatedList(getList("topicsIds", node), orgTermMap)
-      if (CollectionUtils.isNotEmpty(topics)) node.getMetadata.putIfAbsent("topics", topics)
+      if (CollectionUtils.isNotEmpty(topics)) node.getMetadata.put("topic", topics)
       getValidatedTerms(node, targetFwTerms)
     }).flatMap(f => f)
   }
@@ -84,6 +95,63 @@ trait FrameworkValidator extends IDefinition {
     }
   }
 
+  private def getOrgAndTargetFWData(graphId: String, objectType: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext):Future[(List[String], List[String])] = {
+    val masterCategories: Future[List[Map[String, AnyRef]]] = getMasterCategory(graphId, objectType)
+    masterCategories.map(result => {
+      (result.map(cat => cat.getOrDefault("orgIdFieldName", "").asInstanceOf[String]),
+        result.map(cat => cat.getOrDefault("targetIdFieldName", "").asInstanceOf[String]))
+    })
+  }
+
+  private def getMasterCategory(graphId: String, objectType: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[List[Map[String, AnyRef]]] = {
+
+    if (FrameworkMasterCategoryMap.containsKey("masterCategories") && null != FrameworkMasterCategoryMap.get("masterCategories")) {
+      val masterCategories: Map[String, AnyRef] = FrameworkMasterCategoryMap.get("masterCategories")
+      Future(masterCategories.map(obj => obj._2.asInstanceOf[Map[String, AnyRef]]).toList)
+    } else {
+      val nodes = getMasterCategoryNodes(graphId, objectType)
+      nodes.map(dataNodes => {
+        if (dataNodes.isEmpty) {
+          logger.warn(s"ALERT!... There are no master framework category objects[$objectType] defined. This will not enable framework category properties validation.")
+          List[Map[String, AnyRef]]()
+        } else {
+          val masterCategories: scala.collection.immutable.Map[String, AnyRef] = dataNodes.map(
+            node => node.getMetadata.getOrDefault("code", "").asInstanceOf[String] -> Map[String, AnyRef](
+              "code" -> node.getMetadata.getOrDefault("code", "").asInstanceOf[String],
+              "orgIdFieldName" -> node.getMetadata.getOrDefault("orgIdFieldName", "").asInstanceOf[String],
+              "targetIdFieldName" -> node.getMetadata.getOrDefault("targetIdFieldName", "").asInstanceOf[String],
+              "searchIdFieldName" -> node.getMetadata.getOrDefault("searchIdFieldName", "").asInstanceOf[String],
+              "searchLabelFieldName" -> node.getMetadata.getOrDefault("searchLabelFieldName", "").asInstanceOf[String])).toMap
+          FrameworkMasterCategoryMap.put("masterCategories", masterCategories)
+          masterCategories.map(obj => obj._2.asInstanceOf[Map[String, AnyRef]]).toList
+        }
+      }) recoverWith {
+        case e: CompletionException => throw e.getCause
+      }
+    }
+  }
+
+  private def getMasterCategoryNodes(graphId: String, objectType: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext):Future[util.List[Node]]={
+    val mc: MetadataCriterion = MetadataCriterion.create(new util.ArrayList[Filter]() {
+      {
+        add(new Filter(SystemProperties.IL_FUNC_OBJECT_TYPE.name(), SearchConditions.OP_EQUAL, objectType))
+        add(new Filter(SystemProperties.IL_SYS_NODE_TYPE.name(), SearchConditions.OP_EQUAL, "DATA_NODE"))
+        add(new Filter("status", SearchConditions.OP_NOT_EQUAL, "Retired"))
+      }
+    })
+    val searchCriteria = new SearchCriteria {
+      {
+        addMetadata(mc)
+        setCountQuery(false)
+      }
+    }
+    try {
+      oec.graphService.getNodeByUniqueIds(graphId, searchCriteria)
+    } catch {
+      case e: Exception =>
+        throw new ServerException("ERR_GRAPH_PROCESSING_ERROR", "Unable To Fetch Nodes From Graph. Exception is: " + e.getMessage)
+    }
+  }
 
   private def getValidatedTerms(node: Node, validationList: List[String])(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Map[String, AnyRef]] = {
     val ids: List[String] = node.getMetadata.asScala
@@ -138,5 +206,4 @@ trait FrameworkValidator extends IDefinition {
         .toList.asJava
     } else List().asJava
   }
-
 }

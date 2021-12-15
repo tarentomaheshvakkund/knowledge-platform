@@ -97,10 +97,10 @@ object UpdateHierarchyManager {
         DataNode.read(req).map(rootNode => {
             val metadata: java.util.Map[String, AnyRef] = NodeUtil.serialize(rootNode, new java.util.ArrayList[String](), request.getContext.get("schemaName").asInstanceOf[String], request.getContext.get("version").asInstanceOf[String])
             if (!StringUtils.equals(metadata.get(HierarchyConstants.MIME_TYPE).asInstanceOf[String], HierarchyConstants.QUESTIONSET_MIME_TYPE)) {
-                throw new ClientException(HierarchyErrorCodes.ERR_INVALID_ROOT_ID, "Invalid MimeType for Root Node Identifier  : " + identifier)
                 TelemetryManager.error("UpdateHierarchyManager.getValidatedRootNode :: Invalid MimeType for Root node id: " + identifier)
+                throw new ClientException(HierarchyErrorCodes.ERR_INVALID_ROOT_ID, "Invalid MimeType for Root Node Identifier  : " + identifier)
             }
-            if(!StringUtils.equals(metadata.getOrDefault(HierarchyConstants.VISIBILITY, "").asInstanceOf[String], HierarchyConstants.DEFAULT)) {
+            if(!CollectionUtils.containsAny(Platform.getStringList("root_node_visibility", List("Default").asJava), metadata.getOrDefault(HierarchyConstants.VISIBILITY, "").asInstanceOf[String])) {
                 TelemetryManager.error("UpdateHierarchyManager.getValidatedRootNode :: Invalid Visibility found for Root node id: " + identifier)
                 throw new ClientException(HierarchyErrorCodes.ERR_INVALID_ROOT_ID, "Invalid Visibility found for Root Node Identifier  : " + identifier)
             }
@@ -160,7 +160,7 @@ object UpdateHierarchyManager {
             if (StringUtils.equalsIgnoreCase(HierarchyConstants.DEFAULT, child.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 getQuestionNode(child.getOrDefault(HierarchyConstants.IDENTIFIER, "").asInstanceOf[String], HierarchyConstants.TAXONOMY_ID).map(node => {
                     node.getMetadata.put(HierarchyConstants.DEPTH, child.get(HierarchyConstants.DEPTH))
-                    node.getMetadata.put(HierarchyConstants.PARENT, child.get(HierarchyConstants.PARENT))
+                    node.getMetadata.put(HierarchyConstants.PARENT_KEY, child.get(HierarchyConstants.PARENT_KEY))
                     node.getMetadata.put(HierarchyConstants.INDEX, child.get(HierarchyConstants.INDEX))
                     node.setObjectType(HierarchyConstants.QUESTION_OBJECT_TYPE)
                     node.getMetadata.put(HierarchyConstants.OBJECT_TYPE, HierarchyConstants.QUESTION_OBJECT_TYPE)
@@ -367,7 +367,7 @@ object UpdateHierarchyManager {
             updateHierarchyRelatedData(childrenIdentifiersMap.getOrElse(rootId, Map[String, Int]()), 1,
                 rootId, nodeList, childrenIdentifiersMap, updatedNodeList).map(finalEnrichedNodeList => {
                 TelemetryManager.info("Final enriched list size: " + finalEnrichedNodeList.size)
-                val childNodeIds = finalEnrichedNodeList.map(node => node.getIdentifier).filterNot(id => rootId.equalsIgnoreCase(id)).distinct
+                val childNodeIds = finalEnrichedNodeList.map(node => node.getIdentifier.replaceAll(".img", "")).filterNot(id => StringUtils.containsIgnoreCase(rootId, id)).distinct
                 TelemetryManager.info("Final enriched ids (childNodes): " + childNodeIds + " :: size: " + childNodeIds.size)
                 updateNodeList(nodeList, rootId, new java.util.HashMap[String, AnyRef]() {
                     put(HierarchyConstants.DEPTH, 0.asInstanceOf[AnyRef])
@@ -422,7 +422,7 @@ object UpdateHierarchyManager {
 
     private def populateHierarchyRelatedData(tempNode: Node, depth: Int, index: Int, parent: String) = {
         tempNode.getMetadata.put(HierarchyConstants.DEPTH, depth.asInstanceOf[AnyRef])
-        tempNode.getMetadata.put(HierarchyConstants.PARENT, parent.replaceAll(".img", ""))
+        tempNode.getMetadata.put(HierarchyConstants.PARENT_KEY, parent.replaceAll(".img", ""))
         tempNode.getMetadata.put(HierarchyConstants.INDEX, index.asInstanceOf[AnyRef])
     }
 

@@ -90,6 +90,11 @@ public class Request implements Serializable {
         request.put(key, vo);
     }
 
+    public Request putIn(String key, Object vo) {
+        request.put(key, vo);
+        return this;
+    }
+
     public void putAll(Map<String, Object> map) {
         request.putAll(map);
     }
@@ -152,5 +157,9 @@ public class Request implements Serializable {
 
     public void setObjectType(String objectType) {
         this.objectType = objectType;
+    }
+
+    public String graphId() {
+        return (String) context.getOrDefault("graph_id", "");
     }
 }

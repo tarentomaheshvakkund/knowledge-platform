@@ -57,6 +57,16 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         getResult(ApiId.READ_CONTENT, contentActor, readRequest, version = apiVersion)
     }
 
+    def privateRead(identifier: String, mode: Option[String], fields: Option[String]) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val content = new java.util.HashMap().asInstanceOf[java.util.Map[String, Object]]
+        content.putAll(headers)
+        content.putAll(Map("identifier" -> identifier, "mode" -> mode.getOrElse("read"), "fields" -> fields.getOrElse("")).asJava)
+        val readRequest = getRequest(content, headers, "readPrivateContent")
+        setRequestContext(readRequest, version, objectType, schemaName)
+        getResult(ApiId.READ_PRIVATE_CONTENT, contentActor, readRequest, version = apiVersion)
+    }
+
     def update(identifier: String) = Action.async { implicit request =>
         val headers = commonHeaders()
         val body = requestBody()
@@ -161,6 +171,41 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         val contentRequest = getRequest(body, headers, "importContent")
         setRequestContext(contentRequest, version, objectType, schemaName)
         getResult(ApiId.IMPORT_CONTENT, contentActor, contentRequest, version = apiVersion)
+    }
+
+    def systemUpdate(identifier: String) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        content.putAll(headers)
+        val contentRequest = getRequest(content, headers, "systemUpdate")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        contentRequest.getContext.put("identifier", identifier);
+        getResult(ApiId.SYSTEM_UPDATE_CONTENT, contentActor, contentRequest, version = apiVersion)
+    }
+
+    def review(identifier: String) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault("content", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        content.putAll(headers)
+        val contentRequest = getRequest(content, headers, "reviewContent")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        contentRequest.getContext.put("identifier", identifier);
+        getResult(ApiId.REVIEW_CONTENT, contentActor, contentRequest)
+    }
+
+    def reviewReject(identifier: String) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        content.putAll(headers)
+        content.putAll(Map("identifier" -> identifier).asJava)
+        val contentRequest = getRequest(content, headers, "rejectContent")
+        contentRequest.put("mode", "edit")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        contentRequest.getContext.put("identifier", identifier);
+        getResult(ApiId.REJECT_CONTENT, contentActor, contentRequest, version = apiVersion)
     }
 
 }

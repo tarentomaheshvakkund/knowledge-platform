@@ -1,11 +1,11 @@
 package org.sunbird.actors
 
 import java.util
-
 import akka.actor.Props
 import org.scalamock.scalatest.MockFactory
 import org.sunbird.common.HttpUtil
 import org.sunbird.common.dto.{Property, Request, Response, ResponseHandler}
+import org.sunbird.common.exception.ResponseCode
 import org.sunbird.graph.dac.model.{Node, Relation, SearchCriteria}
 import org.sunbird.graph.nodes.DataNode.getRelationMap
 import org.sunbird.graph.utils.ScalaJsonUtils
@@ -13,10 +13,11 @@ import org.sunbird.graph.{GraphService, OntologyEngineContext}
 import org.sunbird.kafka.client.KafkaClient
 import org.sunbird.utils.JavaJsonUtils
 
+import java.util
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
-import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 class QuestionSetActorTest extends BaseSpec with MockFactory {
 
@@ -32,6 +33,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         val node = getNode("QuestionSet", None)
         (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(node))
         (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val request = getQuestionSetRequest()
         request.getContext.put("identifier", "do1234")
         request.putAll(mapAsJavaMap(Map("name" -> "question_1",
@@ -71,10 +75,91 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         assert("successful".equals(response.getParams.getStatus))
     }
 
+
+    it should "return client error response for 'readQuestionSet' if visibility is 'Private'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val node = getNode("QuestionSet", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "QuestionSet")
+                put("description", "Updated question Set")
+                put("visibility","Private")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node))
+        val request = getQuestionSetRequest()
+        request.getContext.put("identifier", "do1234")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readQuestionSet")
+        val response = callActor(request, Props(new QuestionSetActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+    }  
+
+    it should "return success response for 'readPrivateQuestionSet'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB)
+        val node = getNode("QuestionSet", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "QuestionSet")
+                put("visibility","Private")
+                put("channel","abc-123")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node))
+        val request = getQuestionSetRequest()
+        request.getContext.put("identifier","do1234")
+        request.getRequest.put("channel", "abc-123")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateQuestionSet")
+        val response = callActor(request, Props(new QuestionSetActor()))
+        assert("successful".equals(response.getParams.getStatus))
+    }
+
+    it should "return client error for 'readPrivateQuestionSet' if channel is 'blank'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        val request = getQuestionSetRequest()
+        request.getContext.put("identifier","do1234")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateQuestionSet")
+        val response = callActor(request, Props(new QuestionSetActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+        assert(response.getParams.getErr == "ERR_INVALID_CHANNEL")
+        assert(response.getParams.getErrmsg == "Please Provide Channel!")
+    }
+
+    it should "return client error for 'readPrivateQuestionSet' if channel is mismatched" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB)
+        val node = getNode("QuestionSet", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "QuestionSet")
+                put("visibility","Private")
+                put("channel","abc-123")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        val request = getQuestionSetRequest()
+        request.getContext.put("identifier","do1234")
+        request.getRequest.put("channel", "abc")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateQuestionSet")
+        val response = callActor(request, Props(new QuestionSetActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+        assert(response.getParams.getErr == "ERR_ACCESS_DENIED")
+        assert(response.getParams.getErrmsg == "Channel id is not matched")
+    }
+    
     it should "return success response for 'updateQuestionSet'" in {
         implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
         val graphDB = mock[GraphService]
         (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val node = getNode("QuestionSet", None)
         node.getMetadata.putAll(mapAsJavaMap(Map("name" -> "question_1",
             "visibility" -> "Default",
@@ -104,6 +189,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
         val graphDB = mock[GraphService]
         (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val node = getNode("QuestionSet", None)
         node.getMetadata.putAll(mapAsJavaMap(Map("name" -> "question_1",
             "visibility" -> "Default",
@@ -277,6 +365,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(rootNode)).anyNumberOfTimes()
         (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(getEmptyCassandraHierarchy())).anyNumberOfTimes
         (graphDB.updateExternalProps(_: Request)).expects(*).returns(Future(new Response())).anyNumberOfTimes
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val request = getUpdateHierarchyReq()
         request.getContext.put("rootId", "do_1234")
         request.setOperation("updateHierarchy")
@@ -310,6 +401,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(getCassandraHierarchy())).anyNumberOfTimes
         (graphDB.updateExternalProps(_: Request)).expects(*).returns(Future(new Response())).anyNumberOfTimes
         (graphDB.updateNodes(_:String, _:util.List[String], _: util.Map[String, AnyRef])).expects(*, *, *).returns(Future(Map[String, Node]().asJava)).anyNumberOfTimes
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val request = getQuestionSetRequest()
         request.getContext.put("identifier", "do1234")
         request.putAll(mapAsJavaMap(Map("versionKey" -> "1234", "description" -> "updated desc")))
@@ -372,6 +466,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
         (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node))
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).atLeastOnce()
         (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(List(node))).once()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).noMoreThanOnce()
+
         (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(getCassandraHierarchy())).anyNumberOfTimes
         val request = getQuestionSetRequest()
         request.getContext.put("identifier", "test_id")
@@ -421,6 +518,9 @@ class QuestionSetActorTest extends BaseSpec with MockFactory {
             "primaryCategory" -> "Practice Question Set")))
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).atLeastOnce()
         (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(List(node, imageNode))).once()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(getCassandraHierarchy())).anyNumberOfTimes
         (graphDB.updateExternalProps(_: Request)).expects(*).returns(Future(new Response())).anyNumberOfTimes
         (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node)).anyNumberOfTimes()

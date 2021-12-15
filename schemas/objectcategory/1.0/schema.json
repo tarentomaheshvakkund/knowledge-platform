@@ -29,7 +29,14 @@
         },
         "consumerId": {
             "type": "string"
+        },
+        "visibility": {
+            "type": "string",
+            "enum": [
+                "Default"
+            ],
+            "default": "Default"
         }
     },
-    "additionalProperties": true
+    "additionalProperties": false
 }

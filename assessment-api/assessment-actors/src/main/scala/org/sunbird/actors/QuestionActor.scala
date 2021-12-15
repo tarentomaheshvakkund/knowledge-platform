@@ -1,15 +1,19 @@
 package org.sunbird.actors
 
+import org.apache.commons.lang3.StringUtils
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.{DateUtils, Platform}
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.nodes.DataNode
+import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.AssessmentManager
 import org.sunbird.utils.RequestUtil
+
 import java.util
 import javax.inject.Inject
+import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -23,18 +27,22 @@ class QuestionActor @Inject()(implicit oec: OntologyEngineContext) extends BaseA
 	override def onReceive(request: Request): Future[Response] = request.getOperation match {
 		case "createQuestion" => AssessmentManager.create(request, "ERR_QUESTION_CREATE")
 		case "readQuestion" => AssessmentManager.read(request, "question")
+		case "readPrivateQuestion" => AssessmentManager.privateRead(request, "question")
 		case "updateQuestion" => update(request)
 		case "reviewQuestion" => review(request)
 		case "publishQuestion" => publish(request)
 		case "retireQuestion" => retire(request)
 		case "importQuestion" => importQuestion(request)
 		case "systemUpdateQuestion" => systemUpdate(request)
+		case "listQuestions" => listQuestions(request)
+		case "rejectQuestion" => reject(request)
 		case _ => ERROR(request.getOperation)
 	}
 
 	def update(request: Request): Future[Response] = {
 		RequestUtil.restrictProperties(request)
 		request.getRequest.put("identifier", request.getContext.get("identifier"))
+		request.getRequest.put("artifactUrl",null)
 		AssessmentManager.getValidatedNodeForUpdate(request, "ERR_QUESTION_UPDATE").flatMap(_ => AssessmentManager.updateNode(request))
 	}
 
@@ -94,4 +102,29 @@ class QuestionActor @Inject()(implicit oec: OntologyEngineContext) extends BaseA
 			DataNode.systemUpdate(request, response,"", None)
 		}).map(node => ResponseHandler.OK.put("identifier", identifier).put("status", "success"))
 	}
+
+	def listQuestions(request: Request): Future[Response] = {
+		RequestUtil.validateListRequest(request)
+		val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+		request.getRequest.put("fields", fields)
+		DataNode.search(request).map(nodeList => {
+			val questionList = nodeList.map(node => {
+					NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("Image", ""), request.getContext.get("version").asInstanceOf[String])
+			}).asJava
+			ResponseHandler.OK.put("questions", questionList).put("count", questionList.size)
+		})
+	}
+
+	def reject(request: Request): Future[Response] = {
+		request.getRequest.put("identifier", request.getContext.get("identifier"))
+		AssessmentManager.getValidateNodeForReject(request, "ERR_QUESTION_REJECT").flatMap(node => {
+			val updateRequest = new Request(request)
+			val date = DateUtils.formatCurrentDate
+			updateRequest.getContext.put("identifier", request.getContext.get("identifier"))
+			if(request.getRequest.containsKey("rejectComment"))
+				updateRequest.put("rejectComment", request.get("rejectComment").asInstanceOf[String])
+			updateRequest.putAll(Map("versionKey" -> node.getMetadata.get("versionKey"), "status" -> "Draft", "prevStatus" -> node.getMetadata.get("status"), "lastStatusChangedOn" -> date, "lastUpdatedOn" -> date).asJava)
+			AssessmentManager.updateNode(updateRequest)
+			})
+		}
 }

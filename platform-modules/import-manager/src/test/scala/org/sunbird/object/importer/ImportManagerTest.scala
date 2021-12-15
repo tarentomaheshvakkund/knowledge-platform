@@ -1,7 +1,6 @@
 package org.sunbird.`object`.importer
 
 import java.util
-
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.{BooleanUtils, StringUtils}
 import org.scalatest.AsyncFlatSpec
@@ -175,6 +174,52 @@ class ImportManagerTest extends AsyncFlatSpec with Matchers with AsyncMockFactor
 			put("content", new util.HashMap[String, AnyRef](){{
 				put("stage", "upload")
 				put("source","https://dock.sunbirded.org/api/content/v1/read/do_11307822356267827219477")
+				put("metadata", new util.HashMap[String, AnyRef](){{
+					put("name", "Test Content 2")
+					put("description", "Test Content 2")
+				}})
+				put("collection", new util.ArrayList[util.Map[String, AnyRef]](){{
+					add(new util.HashMap[String, AnyRef](){{
+						put("identifier", "do_123")
+						put("unitId", "do_3456")
+					}})
+				}})
+			}})
+		}})
+		implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+		val kfClient = mock[KafkaClient]
+		val hUtil = mock[HttpUtil]
+		(oec.httpUtil _).expects().returns(hUtil)
+		val resp :Response = ResponseHandler.OK()
+		resp.putAll(new util.HashMap[String, AnyRef](){{
+			put("content", new util.HashMap[String, AnyRef](){{
+				put("mimeType", "application/pdf")
+				put("code", "test.res.1")
+				put("framework", "NCF")
+				put("contentType", "Resource")
+				put("artifactUrl", "http://test.com/test.pdf")
+				put("channel", "test")
+				put("downloadUrl", "http://test.com/test.ecar")
+				put("itemSets", "do_123")
+			}})
+		}})
+		(hUtil.get(_: String, _: String, _: util.Map[String, String])).expects(*, *, *).returns(resp)
+		(oec.kafkaClient _).expects().returns(kfClient)
+		(kfClient.send(_: String, _: String)).expects(*, *).returns(None)
+		val resFuture = importMgr.importObject(request)
+		resFuture.map(result => {
+			assert(null != result)
+			assert(result.getResponseCode.toString=="OK")
+			assert(null != result.getResult.get("processId"))
+		})
+	}
+
+	"importObject with valid input source having google drive appIcon" should "return the response having processId" in {
+		val request = getRequest()
+		request.putAll(new util.HashMap[String, AnyRef](){{
+			put("content", new util.HashMap[String, AnyRef](){{
+				put("stage", "upload")
+				put("source","https://dock.preprod.ntp.net.in/api/content/v1/read/do_21334055220494336011209")
 				put("metadata", new util.HashMap[String, AnyRef](){{
 					put("name", "Test Content 2")
 					put("description", "Test Content 2")

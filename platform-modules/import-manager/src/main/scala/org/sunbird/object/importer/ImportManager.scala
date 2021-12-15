@@ -38,11 +38,11 @@ class ImportManager(config: ImportConfig) {
 		val invalidStage: util.List[String] = new util.ArrayList[String]()
 		validateAndGetRequest(reqList, processId, invalidCodes, invalidStage, request).map(objects => {
 			if (CollectionUtils.isNotEmpty(invalidCodes)) {
-				val msg = if (invalidCodes.asScala.filter(c => StringUtils.isNotBlank(c)).toList.size > 0) " | Required Property's Missing For " + invalidCodes else ""
+				val msg = if (invalidCodes.asScala.filter(c => StringUtils.isNotBlank(c)).toList.nonEmpty) " | Required Property's Missing For " + invalidCodes else ""
 				throw new ClientException(ImportErrors.ERR_REQUIRED_PROPS_VALIDATION, ImportErrors.ERR_REQUIRED_PROPS_VALIDATION_MSG + ScalaJsonUtils.serialize(config.requiredProps) + msg)
 			} else if (CollectionUtils.isNotEmpty(invalidStage)) throw new ClientException(ImportErrors.ERR_OBJECT_STAGE_VALIDATION, ImportErrors.ERR_OBJECT_STAGE_VALIDATION_MSG + request.getContext.get("VALID_OBJECT_STAGE").asInstanceOf[java.util.List[String]])
 			else {
-				objects.asScala.map(obj => pushInstructionEvent(graphId, obj))
+				objects.asScala.foreach(obj => pushInstructionEvent(graphId, obj))
 				val response = ResponseHandler.OK()
 				response.put(ImportConstants.PROCESS_ID, processId)
 				response

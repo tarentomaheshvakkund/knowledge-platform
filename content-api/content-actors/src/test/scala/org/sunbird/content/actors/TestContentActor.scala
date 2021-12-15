@@ -1,23 +1,22 @@
 package org.sunbird.content.actors
 
-import java.io.File
-import java.util
-
-import org.sunbird.graph.dac.model.{Node, SearchCriteria}
 import akka.actor.Props
 import com.google.common.io.Resources
 import org.scalamock.scalatest.MockFactory
 import org.sunbird.cloudstore.StorageService
-import org.sunbird.common.{HttpUtil, JsonUtils}
 import org.sunbird.common.dto.{Property, Request, Response, ResponseHandler}
 import org.sunbird.common.exception.ResponseCode
+import org.sunbird.common.{HttpUtil, JsonUtils}
+import org.sunbird.graph.dac.model.{Node, SearchCriteria}
 import org.sunbird.graph.utils.ScalaJsonUtils
 import org.sunbird.graph.{GraphService, OntologyEngineContext}
 import org.sunbird.kafka.client.KafkaClient
 
+import java.io.File
+import java.util
 import scala.collection.JavaConversions._
-import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 class TestContentActor extends BaseSpec with MockFactory {
 
@@ -36,8 +35,6 @@ class TestContentActor extends BaseSpec with MockFactory {
         request.put("content", content)
         assert(true)
         val response = callActor(request, Props(new ContentActor()))
-        println("Response: " + JsonUtils.serialize(response))
-
     }
 
     it should "create a node and store it in neo4j" in {
@@ -47,12 +44,13 @@ class TestContentActor extends BaseSpec with MockFactory {
         (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
         // Uncomment below line if running individual file in local.
         //(graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response()))
-        (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(getValidNode()))
+        (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(getValidNode())).anyNumberOfTimes()
         (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(new util.ArrayList[Node]() {
             {
                 add(getBoardNode())
             }
         }))
+
         val request = getContentRequest()
         request.getRequest.putAll( mapAsJavaMap(Map("channel"-> "in.ekstep","name" -> "New Content", "code" -> "1234", "mimeType"-> "application/vnd.ekstep.content-collection", "contentType" -> "Course", "primaryCategory" -> "Learning Resource", "channel" -> "in.ekstep", "targetBoardIds" -> new util.ArrayList[String](){{add("ncf_board_cbse")}})))
         request.setOperation("createContent")
@@ -68,6 +66,9 @@ class TestContentActor extends BaseSpec with MockFactory {
         (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(getDefinitionNode())).anyNumberOfTimes()
         (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(getValidNode()))
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         val request = getContentRequest()
         request.getRequest.putAll( mapAsJavaMap(Map("name" -> "New Content", "code" -> "1234", "mimeType"-> "application/vnd.ekstep.plugin-archive", "contentType" -> "Course", "primaryCategory" -> "Learning Resource", "channel" -> "in.ekstep", "framework"-> "NCF", "organisationBoardIds" -> new util.ArrayList[String](){{add("ncf_board_cbse")}})))
         request.setOperation("createContent")
@@ -245,6 +246,86 @@ class TestContentActor extends BaseSpec with MockFactory {
         assert("successful".equals(response.getParams.getStatus))
     }
 
+   it should "return client error response for 'readContent' if visibility is 'Private" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB)
+        val node = getNode("Content", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "Content")
+                put("visibility","Private")
+                put("description", "test desc")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node))
+        implicit val ss = mock[StorageService]
+        val request = getContentRequest()
+        request.getContext.put("identifier","do1234")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+    }
+   it should "return success response for 'readPrivateContent'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB)
+        val node = getNode("Content", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "Content")
+                put("visibility","Private")
+                put("channel","abc-123")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node))
+        implicit val ss = mock[StorageService]
+        val request = getContentRequest()
+        request.getContext.put("identifier","do1234")
+        request.getRequest.put("channel", "abc-123")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert("successful".equals(response.getParams.getStatus))
+    }
+
+    it should "return client error for 'readPrivateContent' if channel is 'blank'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        implicit val ss = mock[StorageService]
+        val request = getContentRequest()
+        request.getContext.put("identifier","do1234")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+        assert(response.getParams.getErr == "ERR_INVALID_CHANNEL")
+        assert(response.getParams.getErrmsg == "Please Provide Channel!")
+    }
+
+    it should "return client error for 'readPrivateContent' if channel is mismatched" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB)
+        val node = getNode("Content", Some(new util.HashMap[String, AnyRef]() {
+            {
+                put("name", "Content")
+                put("visibility","Private")
+                put("channel","abc-123")
+            }
+        }))
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        implicit val ss = mock[StorageService]
+        val request = getContentRequest()
+        request.getContext.put("identifier","do1234")
+        request.getRequest.put("channel", "abc")
+        request.putAll(mapAsJavaMap(Map("identifier" -> "do_1234", "fields" -> "")))
+        request.setOperation("readPrivateContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+        assert(response.getParams.getErr == "ERR_ACCESS_DENIED")
+        assert(response.getParams.getErrmsg == "Channel id is not matched")
+    }
+    
     it should "return success response for 'updateContent'" in {
         implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
         val graphDB = mock[GraphService]
@@ -253,6 +334,9 @@ class TestContentActor extends BaseSpec with MockFactory {
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
         (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_123"))))
         (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node))
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         implicit val ss = mock[StorageService]
         val request = getContentRequest()
         request.getContext.put("identifier","do_1234")
@@ -271,6 +355,9 @@ class TestContentActor extends BaseSpec with MockFactory {
         val node = getNode()
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
         (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_xyz"))))
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         implicit val ss = mock[StorageService]
         val request = getContentRequest()
         request.getContext.put("identifier","do_1234")
@@ -301,8 +388,11 @@ class TestContentActor extends BaseSpec with MockFactory {
         (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
         val node = getNode()
         (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
-        (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(node))
-        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response()))
+        (graphDB.addNode(_: String, _: Node)).expects(*, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
         implicit val ss = mock[StorageService]
         val request = getContentRequest()
         request.getContext.put("identifier","do1234")
@@ -366,6 +456,151 @@ class TestContentActor extends BaseSpec with MockFactory {
             "organisation" -> new util.ArrayList[String]() {{ add("NCF2") }})))
         request.put("file", new File(Resources.getResource("jpegImage.jpeg").toURI))
         request.setOperation("uploadContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert("successful".equals(response.getParams.getStatus))
+    }
+
+    it should "return success response for 'systemUpdateContent'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val node = getNode()
+        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(List(node))).once()
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_123"))))
+        (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node))
+
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+
+        implicit val ss = mock[StorageService]
+        val request = getContentRequest()
+        request.getContext.put("identifier","do_1234")
+        request.putAll(mapAsJavaMap(Map("description" -> "test desc", "versionKey" -> "test_123")))
+        request.setOperation("systemUpdate")
+        val response = callActor(request, Props(new ContentActor()))
+        assert("successful".equals(response.getParams.getStatus))
+        assert("do_1234".equals(response.get("identifier")))
+        assert("success".equals(response.get("status")))
+    }
+
+    it should "return success response for 'reviewContent' for document mimeType" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        implicit val ss = mock[StorageService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val node = getNodeForReview("do_123", "application/pdf", "LearningResource", "Content", "https://sunbirddev.blob.core.windows.net/sunbird-content-dev/content/do_11316726916397465612760/artifact/sample.pdf")
+        node.getMetadata.put("contentType", "Resource")
+        node.getMetadata.put("organisationBoardIds", new util.ArrayList[String](){{add("ncf_board_cbse")}})
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("1234"))))
+        val nodes: util.List[Node] = getCategoryNode()
+        (graphDB.getNodeByUniqueIds(_: String, _: SearchCriteria)).expects(*, *).returns(Future(nodes)).anyNumberOfTimes()
+        (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node))
+        val request = getContentRequest()
+        request.getContext.put("identifier", "do_123")
+        request.setOperation("reviewContent")
+        val response = callActor(request, Props(new ContentActor()))
+        println("result : "+response.getResult)
+        assert("successful".equals(response.getParams.getStatus))
+    }
+
+    it should "through client exception for review operation if node is under processing" in {
+        implicit val ss = mock[StorageService]
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        val node = getNodeForReview("do_123", "application/pdf", "LearningResource", "Content", "https://sunbirddev.blob.core.windows.net/sunbird-content-dev/content/do_11316726916397465612760/artifact/sample.pdf")
+        node.getMetadata.put("contentType", "Resource")
+        node.getMetadata.put("status", "Processing")
+        node.getMetadata.put("organisationBoardIds", new util.ArrayList[String](){{add("ncf_board_cbse")}})
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        val request = getContentRequest()
+        request.getContext.put("identifier", "do_123")
+        request.setOperation("reviewContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert(response.getResponseCode == ResponseCode.CLIENT_ERROR)
+        assert(response.getParams.getErr == "ERR_NODE_ACCESS_DENIED")
+        assert(response.getParams.getErrmsg == "Review Operation Can't Be Applied On Node Under Processing State")
+    }
+
+    private def getNodeForReview(id: String, mimeType: String, primaryCategory: String, objType: String,  artifactUrl: String): Node = {
+        val node = new Node()
+        node.setIdentifier(id)
+        node.setNodeType("DATA_NODE")
+        node.setObjectType(objType)
+        node.setMetadata(new util.HashMap[String, AnyRef]() {
+            {
+                put("identifier", id)
+                put("mimeType", mimeType)
+                put("primaryCategory", primaryCategory)
+                put("name", "Test Data 1")
+                put("channel", "in.ekstep")
+                put("code", "test_data_1")
+                put("versionKey", "1234")
+                put("artifactUrl", artifactUrl)
+                put("framework" , "NCF")
+            }
+        })
+        node
+    }
+
+    it should "return success response for 'rejectContent'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        implicit val ss = mock[StorageService]
+        val node =  getValidNodeToReject()
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_123")))).anyNumberOfTimes()
+        (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node)).anyNumberOfTimes()
+        val request = getContentRequest()
+        request.getContext.put("identifier","do1234")
+        request.putAll(mapAsJavaMap(Map("description" -> "test desc", "versionKey" -> "test_123")))
+        request.setOperation("rejectContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert("successful".equals(response.getParams.getStatus))
+    }
+
+    it should "return client exception for 'rejectContent' without status" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        implicit val ss = mock[StorageService]
+        val node =  getValidNodeToReject()
+        node.getMetadata.put("status","")
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_123")))).anyNumberOfTimes()
+        (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node)).anyNumberOfTimes()
+        val request = getContentRequest()
+        request.getContext.put("identifier","do_1234")
+        request.putAll(mapAsJavaMap(Map("description" -> "test desc", "versionKey" -> "test_123")))
+        request.setOperation("rejectContent")
+        val response = callActor(request, Props(new ContentActor()))
+        assert("failed".equals(response.getParams.getStatus))
+        assert("ERR_METADATA_ISSUE".equals(response.getParams.getErr))
+        assert("Content metadata error, status is blank for identifier:do_1234".equals(response.getParams.getErrmsg))
+    }
+
+    it should "return success for 'rejectContent'" in {
+        implicit val oec: OntologyEngineContext = mock[OntologyEngineContext]
+        val graphDB = mock[GraphService]
+        (oec.graphService _).expects().returns(graphDB).anyNumberOfTimes()
+        implicit val ss = mock[StorageService]
+        val node =  getValidNodeToReject()
+        node.getMetadata.put("status","Review")
+        node.getMetadata.put("framework", "NCF")
+        (graphDB.getNodeByUniqueId(_: String, _: String, _: Boolean, _: Request)).expects(*, *, *, *).returns(Future(node)).anyNumberOfTimes()
+        (graphDB.readExternalProps(_: Request, _: List[String])).expects(*, *).returns(Future(new Response())).anyNumberOfTimes()
+        (graphDB.getNodeProperty(_: String, _: String, _: String)).expects(*, *, *).returns(Future(new Property("versionKey", new org.neo4j.driver.internal.value.StringValue("test_123")))).anyNumberOfTimes()
+        (graphDB.upsertNode(_: String, _: Node, _: Request)).expects(*, *, *).returns(Future(node)).anyNumberOfTimes()
+        val request = getContentRequest()
+        request.getContext.put("identifier","do_1234")
+        request.putAll(mapAsJavaMap(Map("rejectComment"->"Testing reject comment", "versionKey" -> "test_123","rejectReasons" -> Array("Incorrect Content"))))
+        request.setOperation("rejectContent")
         val response = callActor(request, Props(new ContentActor()))
         assert("successful".equals(response.getParams.getStatus))
     }
@@ -451,6 +686,28 @@ class TestContentActor extends BaseSpec with MockFactory {
         node.setObjectType("Term")
         node.setGraphId("domain")
         node.setMetadata(mapAsJavaMap(Map("name"-> "CBSE")))
+        node
+    }
+
+    def getValidNodeToReject(): Node = {
+        val node = new Node()
+        node.setIdentifier("do_1234")
+        node.setNodeType("DATA_NODE")
+        node.setObjectType("Content")
+        node.setMetadata(new util.HashMap[String, AnyRef]() {
+            {
+                put("identifier", "do_1234")
+                put("mimeType", "application/pdf")
+                put("status", "Review")
+                put("reviewStatus", "InReview")
+                put("contentType", "Resource")
+                put("name", "Node To Reject")
+                put("versionKey", "test_123")
+                put("channel", "in.ekstep")
+                put("code", "Resource_1")
+                put("primaryCategory", "Learning Resource")
+            }
+        })
         node
     }
 }

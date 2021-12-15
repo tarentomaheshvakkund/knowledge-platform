@@ -8,6 +8,7 @@ object ApiId {
 	//Content APIs
 	val CREATE_CONTENT = "api.content.create"
 	val READ_CONTENT = "api.content.read"
+	val READ_PRIVATE_CONTENT = "api.content.private.read"
 	val UPDATE_CONTENT = "api.content.update"
 	val UPLOAD_CONTENT = "api.content.upload"
 	val RETIRE_CONTENT = "api.content.retire"
@@ -18,6 +19,9 @@ object ApiId {
 	val ACCEPT_FLAG = "api.content.flag.accept"
 	val LINK_DIAL_CONTENT = "api.content.dialcode.link"
 	val IMPORT_CONTENT = "api.content.import"
+	val SYSTEM_UPDATE_CONTENT = "api.content.system.update"
+	val REVIEW_CONTENT = "api.content.review"
+	val REJECT_CONTENT = "api.content.review.reject"
 
 	// Collection APIs
 	val ADD_HIERARCHY = "api.content.hierarchy.add"
@@ -58,6 +62,7 @@ object ApiId {
 	//Collection V4 apis
 	val CREATE_COLLECTION = "api.collection.create"
 	val READ_COLLECTION = "api.collection.read"
+	val READ_PRIVATE_COLLECTION = "api.collection.private.read"
 	val UPDATE_COLLECTION = "api.collection.update"
 	val RETIRE_COLLECTION = "api.collection.retire"
 	val COPY_COLLECTION = "api.collection.copy"
@@ -68,6 +73,9 @@ object ApiId {
 	val REMOVE_HIERARCHY_V4 = "api.collection.hierarchy.remove"
 	val UPDATE_HIERARCHY_V4 = "api.collection.hierarchy.update"
 	val GET_HIERARCHY_V4 = "api.collection.hierarchy.get"
+	val SYSTEM_UPDATE_COLLECTION = "api.collection.system.update"
+	val REVIEW_COLLECTION = "api.collection.review"
+    val REJECT_COLLECTION = "api.collection.review.reject"
 
   //App APIs
   val REGISTER_APP = "api.app.register"
@@ -84,5 +92,12 @@ object ApiId {
   val UPDATE_EVENT_SET = "api.eventset.update"
   val PUBLISH_EVENT_SET = "api.eventset.publish"
   val PUBLISH_EVENT = "api.event.publish"
+
+	//Object APIs
+	val READ_OBJECT = "api.object.read"
+
+	//Collection CSV APIs
+	val IMPORT_CSV = "api.collection.import"
+	val EXPORT_CSV = "api.collection.export"
 
 }

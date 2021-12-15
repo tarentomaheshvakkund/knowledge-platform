@@ -37,6 +37,13 @@ class CollectionSpec extends BaseSpec {
             status(result) must equalTo(OK)
         }
 
+        "return success response for private read API" in {
+            val controller = app.injector.instanceOf[controllers.v4.CollectionController]
+            val result = controller.privateRead("do_123", None, None)(FakeRequest())
+            isOK(result)
+            status(result) must equalTo(OK)
+        }
+
         "return success response for hierarchy add API" in {
             val controller = app.injector.instanceOf[controllers.v4.CollectionController]
             val result = controller.addHierarchy()(FakeRequest())
@@ -89,6 +96,20 @@ class CollectionSpec extends BaseSpec {
             isOK(result)
             status(result) must equalTo(OK)
         }
+
+        "return success response for collection review reject API" in {
+          val controller = app.injector.instanceOf[controllers.v4.CollectionController]
+          val result = controller.reviewReject("do_123")(FakeRequest())
+          isOK(result)
+          status(result) must equalTo(OK)
+        }
+
+        "return success response for collection review API" in {
+            val controller = app.injector.instanceOf[controllers.v4.CollectionController]
+            val result = controller.review("do_123")(FakeRequest())
+            isOK(result)
+            status(result) must equalTo(OK)
+        }
     }
 
     "return success response for hierarchy update API" in {
@@ -133,6 +154,17 @@ class CollectionSpec extends BaseSpec {
             val fakeRequest = FakeRequest("POST", "/collection/v4/create ").withJsonBody(json)
             val result = controller.create()(fakeRequest)
             status(result) must equalTo(BAD_REQUEST)
+        }
+    }
+
+    "Collection Controller with valid request " should {
+        "return success response for systemUpdate API" in {
+            val controller = app.injector.instanceOf[controllers.v4.CollectionController]
+            val json: JsValue = Json.parse("""{"request": {"collection": {"primaryCategory": "Asset"}}}""")
+            val fakeRequest = FakeRequest("POST", "/collection/v4/system/update/do_123").withJsonBody(json)
+            val result = controller.systemUpdate("do_123")(fakeRequest)
+            isOK(result)
+            status(result) must equalTo(OK)
         }
     }
 }

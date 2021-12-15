@@ -31,7 +31,6 @@ import scala.concurrent.{ExecutionContext, Future}
 
 
 object CopyManager {
-    implicit val oec: OntologyEngineContext = new OntologyEngineContext
     private val TEMP_FILE_LOCATION = Platform.getString("content.upload.temp_location", "/tmp/content")
     private val metadataNotTobeCopied = Platform.config.getStringList("content.copy.props_to_remove")
     private val invalidStatusList: util.List[String] = Platform.getStringList("content.copy.invalid_statusList", new util.ArrayList[String]())
@@ -40,11 +39,9 @@ object CopyManager {
     private val internalHierarchyProps = List("identifier", "parent", "index", "depth")
     private val restrictedMimeTypesForUpload = List("application/vnd.ekstep.ecml-archive","application/vnd.ekstep.content-collection")
 
-    implicit val ss: StorageService = new StorageService
-
     private var copySchemeMap: util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]()
 
-    def copy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
+    def copy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Response] = {
         request.getContext.put(ContentConstants.COPY_SCHEME, request.getRequest.getOrDefault(ContentConstants.COPY_SCHEME, ""))
         validateRequest(request)
         DataNode.read(request).map(node => {
@@ -71,7 +68,7 @@ object CopyManager {
         }).flatMap(f => f) recoverWith { case e: CompletionException => throw e.getCause }
     }
 
-    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext,  oec: OntologyEngineContext): Future[Node] = {
+    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext,  oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
         //        cleanUpNodeRelations(node)
         val copyCreateReq: Future[Request] = getCopyRequest(node, request)
         copyCreateReq.map(req => {
@@ -81,7 +78,7 @@ object CopyManager {
         }).flatMap(f => f)
     }
 
-    def copyCollection(originNode: Node, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext):Future[Node] = {
+    def copyCollection(originNode: Node, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext, ss: StorageService):Future[Node] = {
         val copyType = request.getRequest.get(ContentConstants.COPY_TYPE).asInstanceOf[String]
         copyContent(originNode, request).map(node => {
             val req = new Request(request)
@@ -110,13 +107,17 @@ object CopyManager {
 
     def updateShallowHierarchy(request: Request, node: Node, originNode: Node, originHierarchy: util.Map[String, AnyRef])(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
         val childrenHierarchy = originHierarchy.get("children").asInstanceOf[util.List[util.Map[String, AnyRef]]]
+        val updatedChildrenHierarchy = childrenHierarchy.asScala.toList.map(child => {
+            child.put("parent",node.getIdentifier)
+            child
+        })
         val req = new Request(request)
         req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.COLLECTION_SCHEMA_NAME)
         req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
         req.getContext.put(ContentConstants.IDENTIFIER, node.getIdentifier)
         req.put(ContentConstants.HIERARCHY, ScalaJsonUtils.serialize(new java.util.HashMap[String, AnyRef](){{
             put(ContentConstants.IDENTIFIER, node.getIdentifier)
-            put(ContentConstants.CHILDREN, childrenHierarchy)
+            put(ContentConstants.CHILDREN, updatedChildrenHierarchy.asJava)
         }}))
         DataNode.update(req).map(node=>node)
     }
@@ -221,7 +222,7 @@ object CopyManager {
     protected def getFileNameFromURL(fileUrl: String): String = if (!FilenameUtils.getExtension(fileUrl).isEmpty)
         FilenameUtils.getBaseName(fileUrl) + "_" + System.currentTimeMillis + "." + FilenameUtils.getExtension(fileUrl) else FilenameUtils.getBaseName(fileUrl) + "_" + System.currentTimeMillis
 
-    protected def isInternalUrl(url: String): Boolean = url.contains(ss.getContainerName())
+    protected def isInternalUrl(url: String)(implicit ss: StorageService): Boolean = url.contains(ss.getContainerName())
 
     def prepareHierarchyRequest(originHierarchy: util.Map[String, AnyRef], originNode: Node, node: Node, copyType: String, request: Request):util.HashMap[String, AnyRef] = {
         val children:util.List[util.Map[String, AnyRef]] = originHierarchy.get("children").asInstanceOf[util.List[util.Map[String, AnyRef]]]
@@ -271,7 +272,7 @@ object CopyManager {
         }
     }
 
-    def artifactUpload(node: Node, copiedNode: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
+    def artifactUpload(node: Node, copiedNode: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
         val artifactUrl = node.getMetadata.getOrDefault(ContentConstants.ARTIFACT_URL, "").asInstanceOf[String]
         val mimeType = node.getMetadata.get(ContentConstants.MIME_TYPE).asInstanceOf[String]
         val contentType = node.getMetadata.get(ContentConstants.CONTENT_TYPE).asInstanceOf[String]
