@@ -8,14 +8,16 @@ import org.sunbird.models.UploadParams
 import org.sunbird.common.dto.ResponseHandler
 import play.api.mvc.ControllerComponents
 import utils.{ActorNames, ApiId, JavaJsonUtils}
-
+import org.slf4j.LoggerFactory
+import com.fasterxml.jackson.databind.ObjectMapper
 import scala.collection.JavaConverters._
 
 import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
 class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor: ActorRef, @Named(ActorNames.COLLECTION_ACTOR) collectionActor: ActorRef, cc: ControllerComponents, actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends BaseController(cc) {
-
+    val LOG = LoggerFactory.getLogger(classOf[ContentController])
+    val mapper = new ObjectMapper();
     val objectType = "Content"
     val schemaName: String = "content"
     val version = "1.0"
@@ -24,6 +26,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         val headers = commonHeaders()
         val body = requestBody()
         val content = body.getOrDefault("content", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        LOG.warn("Content create request :  {}", mapper.writeValueAsString(content))
         content.putAll(headers)
         val contentRequest = getRequest(content, headers, "createContent", true)
         setRequestContext(contentRequest, version, objectType, schemaName)
@@ -56,6 +59,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         val headers = commonHeaders()
         val body = requestBody()
         val content = body.getOrDefault("content", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        LOG.warn("Content Update request :  {}", mapper.writeValueAsString(content))
         content.putAll(headers)
         val contentRequest = getRequest(content, headers, "updateContent")
         setRequestContext(contentRequest, version, objectType, schemaName)
@@ -69,6 +73,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         body.putAll(headers)
         val contentRequest = getRequest(body, headers, "addHierarchy")
         contentRequest.put("mode", "edit");
+        LOG.warn("Add Hierarchy request :  {}", mapper.writeValueAsString(contentRequest))
         setRequestContext(contentRequest, version, objectType, schemaName)
         getResult(ApiId.ADD_HIERARCHY, collectionActor, contentRequest)
     }
@@ -89,6 +94,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         val data = body.getOrDefault("data", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]
         data.putAll(headers)
         val contentRequest = getRequest(data, headers, "updateHierarchy")
+        LOG.warn("Update Hierarchy request :  {}", mapper.writeValueAsString(contentRequest))
         setRequestContext(contentRequest, version, objectType, schemaName)
         getResult(ApiId.UPDATE_HIERARCHY, collectionActor, contentRequest)
     }

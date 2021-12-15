@@ -271,28 +271,53 @@ public class SearchProcessor {
 	 * @param searchSourceBuilder
 	 * @return
 	 */
-	@SuppressWarnings("unchecked")
-	private void setAggregations(List<Map<String, Object>> groupByList,
-			SearchSourceBuilder searchSourceBuilder) {
+	  @SuppressWarnings("unchecked")
+	  private void setAggregations(List<Map<String, Object>> groupByList,
+					 SearchSourceBuilder searchSourceBuilder) {
+            
 		TermsAggregationBuilder termBuilder = null;
 		if (groupByList != null && !groupByList.isEmpty()) {
-			for (Map<String, Object> groupByMap : groupByList) {
-				String groupByParent = (String) groupByMap.get("groupByParent");
-				termBuilder = AggregationBuilders.terms(groupByParent)
-						.field(groupByParent + SearchConstants.RAW_FIELD_EXTENSION)
-						.size(ElasticSearchUtil.defaultResultLimit);
-				List<String> groupByChildList = (List<String>) groupByMap.get("groupByChildList");
-				if (groupByChildList != null && !groupByChildList.isEmpty()) {
-					for (String childGroupBy : groupByChildList) {
-						termBuilder.subAggregation(AggregationBuilders.terms(childGroupBy)
-								.field(childGroupBy + SearchConstants.RAW_FIELD_EXTENSION)
-								.size(ElasticSearchUtil.defaultResultLimit));
-					}
+		    HashMap<String, List<String>> nestedAggregation = new HashMap<>();
+		    for (Map<String, Object> groupByMap : groupByList) {
+			String groupByParent = (String) groupByMap.get("groupByParent");
+			if (!groupByParent.contains(".")) {
+			    termBuilder = AggregationBuilders.terms(groupByParent)
+				    .field(groupByParent + SearchConstants.RAW_FIELD_EXTENSION)
+				    .size(ElasticSearchUtil.defaultResultLimit);
+			    List<String> groupByChildList = (List<String>) groupByMap.get("groupByChildList");
+			    if (groupByChildList != null && !groupByChildList.isEmpty()) {
+				for (String childGroupBy : groupByChildList) {
+				    termBuilder.subAggregation(AggregationBuilders.terms(childGroupBy)
+					    .field(childGroupBy + SearchConstants.RAW_FIELD_EXTENSION)
+					    .size(ElasticSearchUtil.defaultResultLimit));
 				}
-				searchSourceBuilder.aggregation(termBuilder);
+			    }
+			    searchSourceBuilder.aggregation(termBuilder);
+			} else {
+			    if (nestedAggregation.get(groupByParent.split("\\.")[0]) != null) {
+				nestedAggregation.get(groupByParent.split("\\.")[0]).add(groupByParent.split("\\.")[1]);
+			    } else {
+				List<String> nestedAggrList = new ArrayList<>();
+				nestedAggrList.add(groupByParent.split("\\.")[1]);
+				nestedAggregation.put(groupByParent.split("\\.")[0], nestedAggrList);
+			    }
 			}
+		    }
+
+		    if (!nestedAggregation.isEmpty()) {
+			for (Map.Entry<String, List<String>> mapData : nestedAggregation.entrySet()) {
+			    AggregationBuilder nestedAggregationBuilder = AggregationBuilders.nested(mapData.getKey(), mapData.getKey());
+			    for (String nestedValue : mapData.getValue()) {
+				termBuilder = AggregationBuilders.terms(nestedValue)
+					.field(mapData.getKey() + "." + nestedValue + SearchConstants.RAW_FIELD_EXTENSION)
+					.size(ElasticSearchUtil.defaultResultLimit);
+				nestedAggregationBuilder.subAggregation(termBuilder);
+			    }
+			    searchSourceBuilder.aggregation(nestedAggregationBuilder);
+			}
+		    }
 		}
-	}
+	     }
 
 	/**
 	 * @param searchDTO
@@ -304,6 +329,26 @@ public class SearchProcessor {
 		QueryBuilder queryBuilder = null;
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
+	        formQuery(properties, queryBuilder, boolQuery, totalOperation);
+
+		List<Map> multiFilterProperties = searchDTO.getMultiFilterProperties();
+	        System.out.println("multiFilterProperties:: "+multiFilterProperties);
+
+		if(multiFilterProperties!=null)
+			formQuery(multiFilterProperties, queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR);
+
+		System.out.println("Composite Search query:: "+boolQuery);
+
+		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
+		if (null != softConstraints && !softConstraints.isEmpty()) {
+			boolQuery.should(getSoftConstraintQuery(softConstraints));
+			searchDTO.setSortBy(null);
+			// relevanceSort = true;
+		}
+		return boolQuery;
+	}
+	
+	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation){
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -328,87 +373,87 @@ public class SearchProcessor {
 			propertyName = propertyName + SearchConstants.RAW_FIELD_EXTENSION;
 
 			switch (opertation) {
-			case SearchConstants.SEARCH_OPERATION_EQUAL: {
-				queryBuilder = getMustTermQuery(propertyName, values, true);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
+				case SearchConstants.SEARCH_OPERATION_EQUAL: {
+					queryBuilder = getMustTermQuery(propertyName, values, true);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_NOT_EQUAL: {
+					queryBuilder = getMustTermQuery(propertyName, values, false);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_NOT_IN: {
+					queryBuilder = getNotInQuery(propertyName, values);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_ENDS_WITH: {
+					queryBuilder = getRegexQuery(propertyName, values);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_LIKE:
+				case SearchConstants.SEARCH_OPERATION_CONTAINS: {
+					queryBuilder = getMatchPhraseQuery(propertyName, values, true);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_NOT_LIKE: {
+					queryBuilder = getMatchPhraseQuery(propertyName, values, false);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_STARTS_WITH: {
+					queryBuilder = getMatchPhrasePrefixQuery(propertyName, values);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_EXISTS: {
+					queryBuilder = getExistsQuery(propertyName, values, true);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_NOT_EXISTS: {
+					queryBuilder = getExistsQuery(propertyName, values, false);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_GREATER_THAN: {
+					queryBuilder = getRangeQuery(propertyName, values,
+							SearchConstants.SEARCH_OPERATION_GREATER_THAN);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_GREATER_THAN_EQUALS: {
+					queryBuilder = getRangeQuery(propertyName, values,
+							SearchConstants.SEARCH_OPERATION_GREATER_THAN_EQUALS);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_LESS_THAN: {
+					queryBuilder = getRangeQuery(propertyName, values, SearchConstants.SEARCH_OPERATION_LESS_THAN);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_LESS_THAN_EQUALS: {
+					queryBuilder = getRangeQuery(propertyName, values,
+							SearchConstants.SEARCH_OPERATION_LESS_THAN_EQUALS);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_RANGE: {
+					queryBuilder = getRangeQuery(propertyName, values);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
+				case SearchConstants.SEARCH_OPERATION_AND: {
+					queryBuilder = getAndQuery(propertyName, values);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+					break;
+				}
 			}
-			case SearchConstants.SEARCH_OPERATION_NOT_EQUAL: {
-				queryBuilder = getMustTermQuery(propertyName, values, false);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_NOT_IN: {
-				queryBuilder = getNotInQuery(propertyName, values);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_ENDS_WITH: {
-				queryBuilder = getRegexQuery(propertyName, values);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_LIKE:
-			case SearchConstants.SEARCH_OPERATION_CONTAINS: {
-				queryBuilder = getMatchPhraseQuery(propertyName, values, true);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_NOT_LIKE: {
-				queryBuilder = getMatchPhraseQuery(propertyName, values, false);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_STARTS_WITH: {
-				queryBuilder = getMatchPhrasePrefixQuery(propertyName, values);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_EXISTS: {
-				queryBuilder = getExistsQuery(propertyName, values, true);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_NOT_EXISTS: {
-				queryBuilder = getExistsQuery(propertyName, values, false);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_GREATER_THAN: {
-				queryBuilder = getRangeQuery(propertyName, values,
-						SearchConstants.SEARCH_OPERATION_GREATER_THAN);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_GREATER_THAN_EQUALS: {
-				queryBuilder = getRangeQuery(propertyName, values,
-						SearchConstants.SEARCH_OPERATION_GREATER_THAN_EQUALS);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_LESS_THAN: {
-				queryBuilder = getRangeQuery(propertyName, values, SearchConstants.SEARCH_OPERATION_LESS_THAN);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_LESS_THAN_EQUALS: {
-				queryBuilder = getRangeQuery(propertyName, values,
-						SearchConstants.SEARCH_OPERATION_LESS_THAN_EQUALS);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_RANGE: {
-				queryBuilder = getRangeQuery(propertyName, values);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			case SearchConstants.SEARCH_OPERATION_AND: {
-				queryBuilder = getAndQuery(propertyName, values);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
-				break;
-			}
-			}
-			if (totalOperation.equalsIgnoreCase(AND)) {
+			if (operation.equalsIgnoreCase(AND)) {
 				boolQuery.must(queryBuilder);
 			} else {
 				boolQuery.should(queryBuilder);
@@ -416,14 +461,8 @@ public class SearchProcessor {
 
 		}
 
-		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
-		if (null != softConstraints && !softConstraints.isEmpty()) {
-			boolQuery.should(getSoftConstraintQuery(softConstraints));
-			searchDTO.setSortBy(null);
-			// relevanceSort = true;
-		}
-		return boolQuery;
 	}
+
 
 	private QueryBuilder checkNestedProperty(QueryBuilder queryBuilder, String propertyName) {
 		if(propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "").contains(".")) {

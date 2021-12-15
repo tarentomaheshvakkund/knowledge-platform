@@ -87,7 +87,8 @@
                 "audio/webm",
                 "audio/x-wav",
                 "audio/wav",
-                "application/json"
+                "application/json",
+                "application/quiz"
             ]
         },
         "osId": {
@@ -1209,27 +1210,27 @@
         "displayScore": {
             "type": "boolean"
         },
-        "catalogPaths" : {
+         "catalogPaths" : {
             "type": "array",
             "items": {
-                "type": "object"
+              "type": "object"
             }
-        },
-        "competencies" : {
+          },
+          "competencies" : {
             "type": "array",
             "items": {
-                "type": "object"
+              "type": "object"
             }
-        },
-        "sharedWith" : {
-            "type": "array"
-        },
-        "isExternal": {
-            "type": "boolean"
-        },
-        "learningMode": {
-            "type": "string",
-            "enum": [
+          },
+          "sharedWith" : {
+              "type": "array" 
+          },
+          "isExternal": {
+              "type": "boolean"
+          },
+          "learningMode": {
+              "type": "string",
+              "enum": [
                 "Self Paced",
                 "Instructor Led",
                 "Classroom"
@@ -1386,6 +1387,18 @@
             "items": {
                 "type": "string"
             }
-        }
+        },
+          "taxonomyPaths_v2": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "competencies_v3": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
     }
 }

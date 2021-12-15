@@ -9,6 +9,7 @@ public class SearchDTO {
 
     @SuppressWarnings("rawtypes")
     private List<Map> properties;
+    private List<Map> multiFilterProperties;
     private List<String> facets;
     private List<String> fields;
     private Map<String, String> sortBy;
@@ -33,6 +34,14 @@ public class SearchDTO {
         this.operation = operation;
         this.limit = limit;
     }
+    public List<Map> getMultiFilterProperties() {
+        return multiFilterProperties;
+    }
+
+    public void setMultiFilterProperties(List<Map> multiFilterProperties) {
+        this.multiFilterProperties = multiFilterProperties;
+    }
+    
     @SuppressWarnings("rawtypes")
     public List<Map> getProperties() {
         return properties;
