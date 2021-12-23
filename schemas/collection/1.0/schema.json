@@ -1280,6 +1280,18 @@
         "No"
       ],
       "default": "No"
+    },
+    "taxonomyPaths_v2": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "competencies_v3": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
     }
   }
 }
