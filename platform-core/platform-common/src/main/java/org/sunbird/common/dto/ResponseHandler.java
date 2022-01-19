@@ -149,6 +149,7 @@ public class ResponseHandler {
             e.printStackTrace();
             params.setErr("ERR_SYSTEM_EXCEPTION");
         }
+        e.printStackTrace();
         System.out.println("Exception occurred - class :" + e.getClass().getName() + " with message :" + e.getMessage());
         params.setErrmsg(setErrMessage(e));
         response.setParams(params);
