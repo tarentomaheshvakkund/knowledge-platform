@@ -88,12 +88,16 @@ public abstract class BaseSchemaValidator implements ISchemaValidator {
 
     public ValidationResult validate(Map<String, Object> data) throws Exception {
         String dataWithDefaults = withDefaultValues(JsonUtils.serialize(data));
+        System.out.println("BaseSchemaValidator::validate -> dataWithDefaults -> " + dataWithDefaults);
         Map<String, Object> validationDataWithDefaults = cleanEmptyKeys(JsonUtils.deserialize(dataWithDefaults, Map.class));
-
+        System.out.println("BaseSchemaValidator::validate -> after cleaning empty keys -> " + JsonUtils.serialize(validationDataWithDefaults));
         List<String> messages = validate(new StringReader(JsonUtils.serialize(validationDataWithDefaults)));
+        System.out.println("BaseSchemaValidator::validate -> messages -> " + JsonUtils.serialize(messages));
         Map<String, Object> dataMap = JsonUtils.deserialize(dataWithDefaults, Map.class);
         Map<String, Object> externalData = getExternalProps(dataMap);
+        System.out.println("BaseSchemaValidator::validate -> externalData -> " + JsonUtils.serialize(externalData));
         Map<String, Object> relations = getRelations(dataMap);
+        System.out.println("BaseSchemaValidator::validate -> relations -> " + JsonUtils.serialize(relations));
         return new ValidationResult(messages, dataMap, relations, externalData);
     }
 
