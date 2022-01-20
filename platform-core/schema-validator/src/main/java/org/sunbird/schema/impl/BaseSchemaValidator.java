@@ -126,7 +126,7 @@ public abstract class BaseSchemaValidator implements ISchemaValidator {
     private List<String> validate(StringReader input) {
         CustomProblemHandler handler = new CustomProblemHandler();
         try {
-            System.out.println("BaseSchemaValidator::validate Schema --> " + JsonUtils.serialize(schema));
+            System.out.println("BaseSchemaValidator::validate Schema --> " + schema.toString());
         }catch (Exception e) {
             System.out.println("Failed to print schema as String. Exception: " + e.getMessage());
         }
