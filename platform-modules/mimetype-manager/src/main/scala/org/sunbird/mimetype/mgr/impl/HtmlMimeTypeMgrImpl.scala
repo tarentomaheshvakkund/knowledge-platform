@@ -17,7 +17,8 @@ class HtmlMimeTypeMgrImpl(implicit ss: StorageService) extends BaseMimeTypeManag
 
     override def upload(objectId: String, node: Node, uploadFile: File, filePath: Option[String], params: UploadParams)(implicit ec: ExecutionContext): Future[Map[String, AnyRef]] = {
         validateUploadRequest(objectId, node, uploadFile)
-        val indexHtmlValidation: Boolean = if (Platform.config.hasPath("indexHtmlValidation.env")) Platform.config.getBoolean("indexHtmlValidation.env") else false
+        val indexHtmlValidation: Boolean = if (Platform.config.hasPath("indexHtmlValidation.env")) Platform.config.getBoolean("indexHtmlValidation.env") else true
+        TelemetryManager.error("Value of indexHtmlValidation: " + indexHtmlValidation)
         val flag: Boolean = if (indexHtmlValidation) isValidPackageStructure(uploadFile, List[String]("index.html")) else true
         if (flag) {
             val urls = uploadArtifactToCloud(uploadFile, objectId, filePath)
