@@ -586,6 +586,26 @@
     },
     "rejectComment": {
       "type": "string"
+    },
+    "trackable": {
+        "type": "object",
+        "properties": {
+            "enabled": {
+                "type": "string",
+                "enum": ["Yes","No"],
+                "default": "No"
+            },
+            "autoBatch": {
+                "type": "string",
+                "enum": ["Yes","No"],
+                "default": "No"
+            }
+        },
+        "default": {
+            "enabled": "No",
+            "autoBatch": "No"
+        },
+        "additionalProperties": false
     }
   },
   "additionalProperties": false
