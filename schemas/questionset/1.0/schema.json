@@ -609,6 +609,9 @@
     },
     "purpose": {
             "type": "string"
+    },
+    "cutoffScoreType": {
+            "type": "string"
     }
   },
   "additionalProperties": false
