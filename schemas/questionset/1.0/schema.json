@@ -606,6 +606,9 @@
             "autoBatch": "No"
         },
         "additionalProperties": false
+    },
+    "purpose": {
+            "type": "string"
     }
   },
   "additionalProperties": false
