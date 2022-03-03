@@ -610,9 +610,26 @@
     "purpose": {
             "type": "string"
     },
-    "cutoffScoreType": {
-            "type": "string"
-    }
+    "scoreCutoffType": {
+       "type": "string",
+       "enum": [
+         "AssessmentLevel",
+         "SectionLevel"
+       ],
+       "default": "AssessmentLevel"
+    },
+    "subTitle": {
+        "type": "string"
+    },
+    "minimumPassPercentage": {
+      "type": "number"
+    },
+    "additionalKeywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
   },
   "additionalProperties": false
 }
