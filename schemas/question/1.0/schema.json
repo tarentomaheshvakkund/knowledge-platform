@@ -418,14 +418,15 @@
       "type": "object",
       "description": "External Property"
     },
-
-
     "qType": {
       "type": "string",
       "enum": [
         "MCQ",
         "FTB",
-        "SA"
+        "SA",
+        "MCQ-MCA",
+        "MCQ-SCA",
+        "FITB"
       ]
     },
     "scoringMode": {
