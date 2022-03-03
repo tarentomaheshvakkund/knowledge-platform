@@ -629,7 +629,7 @@
       "items": {
         "type": "string"
       }
-    },
+    }
   },
   "additionalProperties": false
 }
