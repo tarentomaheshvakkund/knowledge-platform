@@ -632,7 +632,7 @@
     },
     "additionalInstructions": {
       "type": "string"
-    },
+    }
   },
   "additionalProperties": false
 }
