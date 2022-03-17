@@ -632,6 +632,9 @@
     },
     "additionalInstructions": {
       "type": "string"
+    },
+    "reviewStatus": {
+      "type": "string"
     }
   },
   "additionalProperties": false
