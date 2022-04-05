@@ -124,6 +124,7 @@ object HierarchyManager {
                 getPublishedHierarchy(request)
         } catch { 
             case e : Exception => println("Exception: " + e.getStackTrace)
+            Future { throw new Exception }
         }
     }
 
