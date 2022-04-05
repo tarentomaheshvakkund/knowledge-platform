@@ -116,11 +116,15 @@ object HierarchyManager {
 
     @throws[Exception]
     def getHierarchy(request : Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
-        val mode = request.get("mode").asInstanceOf[String]
-        if(StringUtils.isNotEmpty(mode) && mode.equals("edit"))
-            getUnPublishedHierarchy(request)
-        else
-            getPublishedHierarchy(request)
+        try {
+            val mode = request.get("mode").asInstanceOf[String]
+            if(StringUtils.isNotEmpty(mode) && mode.equals("edit"))
+                getUnPublishedHierarchy(request)
+            else
+                getPublishedHierarchy(request)
+        } catch { 
+            case e : Exception => println("Exception: " + e.getStackTrace)
+        }
     }
 
     @throws[Exception]
