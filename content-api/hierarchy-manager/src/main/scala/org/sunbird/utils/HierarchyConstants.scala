@@ -6,7 +6,7 @@ object HierarchyConstants {
     val NODES_MODIFIED: String = "nodesModified"
     val HIERARCHY: String = "hierarchy"
     val RELATIONAL_METADATA: String = "relationalMetadata"
-    val RELATIONAL_METADATA_COL: String = "relational_metadata"
+    val RELATIONAL_METADATA_COL: String = "relational_metadata_cb"
     val ROOT: String = "root"
     val SET_DEFAULT_VALUE: String = "setDefaultValue"
     val COLLECTION_MIME_TYPE: String = "application/vnd.ekstep.content-collection"
