@@ -95,7 +95,7 @@ public class SearchActor extends SearchBaseActor {
         SearchDTO searchObj = new SearchDTO();
         try {
             Map<String, Object> req = request.getRequest();
-            TelemetryManager.log("Search Request: ", req);
+            TelemetryManager.info("Search Request: ", req);
             String queryString = (String) req.get(SearchConstants.query);
             int limit = getIntValue(req.get(SearchConstants.limit));
             Boolean fuzzySearch = (Boolean) request.get("fuzzy");
