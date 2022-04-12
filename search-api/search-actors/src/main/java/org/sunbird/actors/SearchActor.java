@@ -32,6 +32,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public class SearchActor extends SearchBaseActor {
     private static Timeout WAIT_TIMEOUT = new Timeout(Duration.create(30000, TimeUnit.MILLISECONDS));
 
@@ -261,6 +263,7 @@ public class SearchActor extends SearchBaseActor {
             if (fuzzySearch != null) {
                 searchObj.setFuzzySearch(fuzzySearch);
             }
+            TelemetryManager.info("Search DTO: " + (new ObjectMapper()).writeValueAsString(searchObj));
         } catch (ClassCastException e) {
             e.printStackTrace();
             throw new ClientException(SearchConstants.ERR_COMPOSITE_SEARCH_INVALID_PARAMS,
