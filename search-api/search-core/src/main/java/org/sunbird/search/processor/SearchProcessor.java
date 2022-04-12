@@ -1,6 +1,8 @@
 package org.sunbird.search.processor;
 
 import akka.dispatch.Mapper;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
@@ -240,6 +242,11 @@ public class SearchProcessor {
 		if (searchDTO.isFuzzySearch())
 			relevanceSort = true;
 
+		try {
+			TelemetryManager.info("SearchQuery: " + (new ObjectMapper()).writeValueAsString(query));
+		} catch (JsonProcessingException e) {
+			TelemetryManager.error("SearchQuery: ", e);
+		}
 		searchSourceBuilder.query(query);
 
 		if (sortBy && !relevanceSort
@@ -263,6 +270,11 @@ public class SearchProcessor {
 		setAggregations(groupByFinalList, searchSourceBuilder);
 		setAggregations(searchSourceBuilder, searchDTO.getAggregations());
 		searchSourceBuilder.trackScores(true);
+		try {
+			TelemetryManager.info("searchSourceBuilder: " + (new ObjectMapper()).writeValueAsString(searchSourceBuilder));
+		} catch (JsonProcessingException e) {
+			TelemetryManager.error("searchSourceBuilder:: ", e);
+		}
 		return searchSourceBuilder;
 	}
 
