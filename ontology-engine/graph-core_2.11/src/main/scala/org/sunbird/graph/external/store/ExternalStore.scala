@@ -71,14 +71,17 @@ class ExternalStore(keySpace: String , table: String , primaryKey: java.util.Lis
         selectQuery.where.and(clause)
         try {
             val session: Session = CassandraConnector.getSession
+            println("*******************selectQuery =="+selectQuery)
             val futureResult = session.executeAsync(selectQuery)
             futureResult.asScala.map(resultSet => {
                 if (resultSet.iterator().hasNext) {
                     val row = resultSet.one()
                     val externalMetadataMap = extProps.map(prop => prop -> row.getObject(prop)).toMap
+                    println("*******************externalMetadataMap =="+externalMetadataMap)
                     val response = ResponseHandler.OK()
                     import scala.collection.JavaConverters._
                     response.putAll(externalMetadataMap.asJava)
+                    println("*******************response =="+response)
                     response
                 } else {
                     TelemetryManager.error("Entry is not found in external-store for object with identifier: " + identifier)
@@ -117,6 +120,7 @@ class ExternalStore(keySpace: String , table: String , primaryKey: java.util.Lis
                     resultSet.iterator().toStream.map(row => {
                         import scala.collection.JavaConverters._
                         val externalMetadataMap = extProps.map(prop => prop -> row.getObject(prop)).toMap.asJava
+                        println("*******************externalMetadataMap==="+externalMetadataMap)
                         response.put(row.getString(primaryKey.get(0)), externalMetadataMap)
                     }).toList
                     response
