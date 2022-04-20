@@ -122,6 +122,7 @@ object HierarchyManager {
 
     @throws[Exception]
     def getUnPublishedHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+        println("*******************getUnPublishedHierarchy********************")
         val rootNodeFuture = getRootNode(request)
         rootNodeFuture.map(rootNode => {
             if (StringUtils.equalsIgnoreCase("Retired", rootNode.getMetadata.getOrDefault("status", "").asInstanceOf[String])) {
@@ -129,7 +130,9 @@ object HierarchyManager {
             }
             val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
             var metadata: util.Map[String, AnyRef] = NodeUtil.serialize(rootNode, new util.ArrayList[String](), request.getContext.get("schemaName").asInstanceOf[String], request.getContext.get("version").asInstanceOf[String])
+            println("*******************metadata =="+metadata)
             val hierarchy = fetchHierarchy(request, rootNode.getIdentifier)
+            println("*******************hierarchy =="+hierarchy)
             //TODO: Remove content Mapping for backward compatibility
             HierarchyBackwardCompatibilityUtil.setContentAndCategoryTypes(metadata)
             hierarchy.map(hierarchy => {
@@ -360,12 +363,16 @@ object HierarchyManager {
     }
 
     def fetchHierarchy(request: Request, identifier: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Map[String, AnyRef]] = {
+        println("*******************fetchHierarchy***********************")
         val req = new Request(request)
         req.put("identifier", identifier)
         val responseFuture = oec.graphService.readExternalProps(req, List("hierarchy"))
+        println("*******************responseFuture==="+responseFuture)
         responseFuture.map(response => {
+            println("*******************response==="+response)
             if (!ResponseHandler.checkError(response)) {
                 val hierarchyString = response.getResult.toMap.getOrDefault("hierarchy", "").asInstanceOf[String]
+                println("*******************hierarchyString==="+hierarchyString)
                 if (StringUtils.isNotEmpty(hierarchyString)) {
                     Future(JsonUtils.deserialize(hierarchyString, classOf[java.util.Map[String, AnyRef]]).toMap)
                 } else
@@ -373,9 +380,12 @@ object HierarchyManager {
             } else if (ResponseHandler.checkError(response) && response.getResponseCode.code() == 404 && Platform.config.hasPath("collection.image.migration.enabled") && Platform.config.getBoolean("collection.image.migration.enabled")) {
                 req.put("identifier", identifier.replaceAll(".img", "") + ".img")
                 val responseFuture = oec.graphService.readExternalProps(req, List("hierarchy"))
+                println("*******************responseFuture else==="+responseFuture)
                 responseFuture.map(response => {
+                    println("*******************response==="+response)
                     if (!ResponseHandler.checkError(response)) {
                         val hierarchyString = response.getResult.toMap.getOrDefault("hierarchy", "").asInstanceOf[String]
+                        println("*******************hierarchyString==="+hierarchyString)
                         if (StringUtils.isNotEmpty(hierarchyString)) {
                             JsonUtils.deserialize(hierarchyString, classOf[java.util.Map[String, AnyRef]]).toMap
                         } else
