@@ -155,6 +155,7 @@ public class SearchAsyncOperations {
      */
     public static Future<Node> getNodeByUniqueId(String graphId, String nodeId, Boolean getTags, Request request) {
         TelemetryManager.log("Graph Id: " + graphId + "\nNode Id: " + nodeId + "\nGet Tags:" + getTags);
+        System.out.println("Graph Id: " + graphId + "\nNode Id: " + nodeId + "\nGet Tags:" + getTags);
 
         if (StringUtils.isBlank(graphId))
             throw new ClientException(DACErrorCodeConstants.INVALID_GRAPH.name(),
@@ -166,6 +167,7 @@ public class SearchAsyncOperations {
 
             Driver driver = DriverUtil.getDriver(graphId, GraphOperation.READ);
             TelemetryManager.log("Driver Initialised. | [Graph Id: " + graphId + "]");
+            System.out.println("Driver Initialised. | [Graph Id: " + graphId + "]");
             try (Session session = driver.session()) {
                 Map<String, Object> parameterMap = new HashMap<String, Object>();
                 parameterMap.put(GraphDACParams.graphId.name(), graphId);
@@ -195,6 +197,7 @@ public class SearchAsyncOperations {
                             }
                             if (StringUtils.equalsIgnoreCase("Concept", node.getObjectType())) {
                                 TelemetryManager.info("Saving concept to in-memory cache: "+node.getIdentifier());
+                                System.out.println("Saving concept to in-memory cache: "+node.getIdentifier());
                             }
                             return node;
                         }).exceptionally(error -> {
