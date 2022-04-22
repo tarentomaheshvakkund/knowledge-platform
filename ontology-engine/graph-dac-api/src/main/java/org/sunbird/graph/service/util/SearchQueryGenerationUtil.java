@@ -31,7 +31,7 @@ public class SearchQueryGenerationUtil {
 					+ " OPTIONAL MATCH (ee)-[r]-() RETURN ee, r, startNode(r) as __startNode, endNode(r) as __endNode");
 
 		}
-
+		System.out.println("Returning Get Node By Id Cypher Query: " + query);
 		TelemetryManager.log("Returning Get Node By Id Cypher Query: " + query);
 		return query.toString();
 	}
@@ -55,7 +55,7 @@ public class SearchQueryGenerationUtil {
 					+ "'}) OPTIONAL MATCH (ee)-[r]-() RETURN ee, r, startNode(r) as __startNode, endNode(r) as __endNode");
 
 		}
-
+		System.out.println("Returning Get Node By Unique Id Cypher Query: " + query);
 		TelemetryManager.log("Returning Get Node By Unique Id Cypher Query: " + query);
 		return query.toString();
 	}
