@@ -177,9 +177,11 @@ public class SearchAsyncOperations {
                 CompletionStage<Node> cs = session.runAsync(SearchQueryGenerationUtil.generateGetNodeByUniqueIdCypherQuery(parameterMap))
                         .thenCompose(fn -> fn.listAsync()).thenApply(records -> {
                             Node node = null;
-                            if (CollectionUtils.isEmpty(records))
+                            if (CollectionUtils.isEmpty(records)) {
+                                System.out.println("Exception in collection utils.isempty" + records);
                                 throw new ResourceNotFoundException(DACErrorCodeConstants.NOT_FOUND.name(),
                                         DACErrorMessageConstants.NODE_NOT_FOUND + " | [Invalid Node Id.]: " + nodeId, nodeId);
+                            }
 
                             Map<Long, Object> nodeMap = new HashMap<Long, Object>();
                             Map<Long, Object> relationMap = new HashMap<Long, Object>();
