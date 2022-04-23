@@ -36,7 +36,9 @@ object UpdateHierarchyManager {
         getValidatedRootNode(rootId, request).map(node => {
             getExistingHierarchy(request, node).map(existingHierarchy => {
                 val existingChildren = existingHierarchy.getOrElse(HierarchyConstants.CHILDREN, new java.util.ArrayList[java.util.HashMap[String, AnyRef]]()).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+                println("existingChildren=="+existingChildren)
                 val nodes = List(node)
+                println("nodes=="+nodes)
                 addChildNodesInNodeList(existingChildren, request, nodes).map(list => (existingHierarchy, list))
             }).flatMap(f => f)
               .map(result => {
@@ -119,7 +121,9 @@ object UpdateHierarchyManager {
     }
 
     private def getExistingHierarchy(request: Request, rootNode: Node)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[java.util.HashMap[String, AnyRef]] = {
+        println("getExistingHierarchy method called")
         fetchHierarchy(request, rootNode).map(hierarchyString => {
+            println("getExistingHierarchy ==="+hierarchyString)
             if (!hierarchyString.asInstanceOf[String].isEmpty) {
                 JsonUtils.deserialize(hierarchyString.asInstanceOf[String], classOf[java.util.HashMap[String, AnyRef]])
             } else new java.util.HashMap[String, AnyRef]()
@@ -127,9 +131,11 @@ object UpdateHierarchyManager {
     }
 
     private def fetchHierarchy(request: Request, rootNode: Node)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Any] = {
+        println("fetchHierarchy method  ===")
         val req = new Request(request)
         req.put(HierarchyConstants.IDENTIFIER, rootNode.getIdentifier)
         oec.graphService.readExternalProps(req, List(HierarchyConstants.HIERARCHY)).map(response => {
+            println("fetchHierarchy response  ==="+response)
             if (ResponseHandler.checkError(response) && ResponseHandler.isResponseNotFoundError(response)) {
                 if (CollectionUtils.containsAny(HierarchyConstants.HIERARCHY_LIVE_STATUS, rootNode.getMetadata.get("status").asInstanceOf[String]))
                     throw new ServerException(HierarchyErrorCodes.ERR_HIERARCHY_NOT_FOUND, "No hierarchy is present in cassandra for identifier:" + rootNode.getIdentifier)
@@ -150,9 +156,12 @@ object UpdateHierarchyManager {
     }
 
     private def addChildNodesInNodeList(childrenMaps: java.util.List[java.util.Map[String, AnyRef]], request: Request, nodes: scala.collection.immutable.List[Node])(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[scala.collection.immutable.List[Node]] = {
+        println("addChildNodesInNodeList method")
         if (CollectionUtils.isNotEmpty(childrenMaps)) {
             val futures = childrenMaps.map(child => {
+                println("addChildNodesInNodeList child=="+child)
                 addNodeToList(child, request, nodes).map(modifiedList => {
+                    println("addChildNodesInNodeList modifiedList=="+modifiedList)
                     if (!StringUtils.equalsIgnoreCase(HierarchyConstants.DEFAULT, child.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                         addChildNodesInNodeList(child.get(HierarchyConstants.CHILDREN).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]], request, modifiedList)
                     } else
@@ -166,6 +175,7 @@ object UpdateHierarchyManager {
     }
 
     private def addNodeToList(child: java.util.Map[String, AnyRef], request: Request, nodes: scala.collection.immutable.List[Node])(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[scala.collection.immutable.List[Node]] = {
+        println("addNodeToList method :: nodes=="+nodes)
         if (StringUtils.isNotEmpty(child.get(HierarchyConstants.VISIBILITY).asInstanceOf[String]))
             if (StringUtils.equalsIgnoreCase(HierarchyConstants.DEFAULT, child.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 getContentNode(child.getOrDefault(HierarchyConstants.IDENTIFIER, "").asInstanceOf[String], HierarchyConstants.TAXONOMY_ID).map(node => {
