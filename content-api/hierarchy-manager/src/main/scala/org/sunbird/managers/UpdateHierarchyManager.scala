@@ -381,6 +381,7 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     private def updateHierarchyRelatedData(childrenIds: Map[String, Int], depth: Int, parent: String, nodeList: List[Node], hierarchyStructure: Map[String, Map[String, Int]], enrichedNodeList: scala.collection.immutable.List[Node], request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[List[Node]] = {
+        println("updateHierarchyRelatedData called childrenIds:"+childrenIds+" parent:"+parent)
         val futures = childrenIds.map(child => {
             val id = child._1
             val index = child._2 + 1
@@ -388,6 +389,7 @@ object UpdateHierarchyManager {
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
                 val nxtEnrichedNodeList = tempNode :: enrichedNodeList
+                println("nxtEnrichedNodeList=="+nxtEnrichedNodeList)
                 if (MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(child._1, Map[String, Int]())))
                     updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
                         tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
@@ -395,12 +397,16 @@ object UpdateHierarchyManager {
                     Future(nxtEnrichedNodeList)
             } else {
 //                TelemetryManager.info("Get ContentNode as TempNode is null for ID: " + id)
+                println("Get ContentNode as TempNode is null for ID: " + id)
                 getContentNode(id, HierarchyConstants.TAXONOMY_ID).map(node => {
                     val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).orNull
+                    println("parentNode: " + parentNode)
                     val nxtEnrichedNodeList = if (null != parentNode) {
                         TelemetryManager.info(s"ObjectType for $parent is ${parentNode.getObjectType}...")
                         val parentMetadata: java.util.Map[String, AnyRef] = NodeUtil.serialize(parentNode, new java.util.ArrayList[String](), parentNode.getObjectType.toLowerCase, "1.0")
+                        println("parentMetadata: " + parentMetadata)
                         val childMetadata: java.util.Map[String, AnyRef] = NodeUtil.serialize(node, new java.util.ArrayList[String](), node.getObjectType.toLowerCase, "1.0")
+                        println("childMetadata: " + childMetadata)
                         HierarchyManager.validateLeafNodes(parentMetadata, childMetadata, request)
                         populateHierarchyRelatedData(node, depth, index, parent)
                         node.getMetadata.put(HierarchyConstants.VISIBILITY, HierarchyConstants.DEFAULT)
@@ -410,6 +416,7 @@ object UpdateHierarchyManager {
                         node :: enrichedNodeList
                     } else {
                         TelemetryManager.info("There is no parent node for identifier:" + parent)
+                        println("updateHierarchyRelatedData ==>> enrichedNodeList: " + enrichedNodeList)
                         enrichedNodeList
                     }
                     if (MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(id, Map[String, Int]()))) {
