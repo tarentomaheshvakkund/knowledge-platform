@@ -391,7 +391,7 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     private def updateHierarchyRelatedData(childrenIds: Map[String, Int], depth: Int, parent: String, nodeList: List[Node], hierarchyStructure: Map[String, Map[String, Int]], enrichedNodeList: scala.collection.immutable.List[Node], request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[List[Node]] = {
-        println("updateHierarchyRelatedData called childrenIds:"+childrenIds+" parent:"+parent)
+        println("updateHierarchyRelatedData called childrenIds:"+childrenIds+" parent:"+parent+" nodeList:"+nodeList+" hierarchyStructure:"+hierarchyStructure+" enrichedNodeList:"+enrichedNodeList+" request:"+request)
         val futures = childrenIds.map(child => {
             val id = child._1
             val index = child._2 + 1
@@ -404,7 +404,9 @@ object UpdateHierarchyManager {
                     updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
                         tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
                 else
-                    Future(nxtEnrichedNodeList)
+                    updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
+                        tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
+                    // Future(nxtEnrichedNodeList)
             } else {
 //                TelemetryManager.info("Get ContentNode as TempNode is null for ID: " + id)
                 println("Get ContentNode as TempNode is null for ID: " + id)
