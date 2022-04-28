@@ -51,8 +51,10 @@ object UpdateHierarchyManager {
                   //TelemetryManager.info("NodeList for root id :" + rootId +" :: " + ScalaJsonUtils.serialize(nodeMap))
                   val idMap: mutable.Map[String, String] = mutable.Map()
                   idMap += (rootId -> rootId)
+                  println("updateHierarchy :: nodes :" + nodes)
+                  println("updateHierarchy :: nodesModified:"+nodesModified)
                   updateNodesModifiedInNodeList(nodes, nodesModified, request, idMap).map(modifiedNodeList => {
-
+                      println("updateHierarchy :: modifiedNodeList :" + modifiedNodeList)
                       getChildrenHierarchy(modifiedNodeList, rootId, hierarchy, idMap, result._1, request).map(children => {
                           TelemetryManager.log("Children for root id :" + rootId +" :: " + JsonUtils.serialize(children))
                           println("Children for root id :" + rootId +" :: " + JsonUtils.serialize(children))
@@ -404,9 +406,7 @@ object UpdateHierarchyManager {
                     updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
                         tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
                 else
-                    updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
-                        tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
-                    // Future(nxtEnrichedNodeList)
+                    Future(nxtEnrichedNodeList)
             } else {
 //                TelemetryManager.info("Get ContentNode as TempNode is null for ID: " + id)
                 println("Get ContentNode as TempNode is null for ID: " + id)
