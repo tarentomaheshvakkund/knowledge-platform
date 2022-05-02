@@ -405,14 +405,21 @@ object UpdateHierarchyManager {
     @throws[Exception]
     private def updateHierarchyRelatedData(childrenIds: Map[String, Int], depth: Int, parent: String, nodeList: List[Node], hierarchyStructure: Map[String, Map[String, Int]], enrichedNodeList: scala.collection.immutable.List[Node], request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[List[Node]] = {
         println("updateHierarchyRelatedData called childrenIds:"+childrenIds+" parent:"+parent+" nodeList:"+nodeList+" hierarchyStructure:"+hierarchyStructure+" enrichedNodeList:"+enrichedNodeList+" request:"+request)
+        println("updateHierarchyRelatedData :: depth "+depth)
         val futures = childrenIds.map(child => {
             val id = child._1
+            println("updateHierarchyRelatedData :: id "+id)
             val index = child._2 + 1
+            println("updateHierarchyRelatedData :: index "+index)
             val tempNode = getTempNode(nodeList, id)
+            println("updateHierarchyRelatedData :: tempNode "+tempNode)
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
+                println("updateHierarchyRelatedData :: tempNode Parent Node "+tempNode)
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
                 val nxtEnrichedNodeList = tempNode :: enrichedNodeList
-                println("nxtEnrichedNodeList=="+nxtEnrichedNodeList)
+                println("updateHierarchyRelatedData 1:: nxtEnrichedNodeList=="+nxtEnrichedNodeList)
+                println("updateHierarchyRelatedData 1:: hierarchyStructure=="+hierarchyStructure)
+                println("updateHierarchyRelatedData 1:: if checking=="+(MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()))))
                 if (MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(child._1, Map[String, Int]())))
                     updateHierarchyRelatedData(hierarchyStructure.getOrDefault(child._1, Map[String, Int]()),
                         tempNode.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
@@ -442,6 +449,8 @@ object UpdateHierarchyManager {
                         println("updateHierarchyRelatedData ==>> enrichedNodeList: " + enrichedNodeList)
                         enrichedNodeList
                     }
+                    println("updateHierarchyRelatedData :: hierarchyStructure=="+hierarchyStructure)
+                    println("updateHierarchyRelatedData :: if checking=="+(MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(id, Map[String, Int]()))))
                     if (MapUtils.isNotEmpty(hierarchyStructure.getOrDefault(id, Map[String, Int]()))) {
                         updateHierarchyRelatedData(hierarchyStructure.getOrDefault(id, Map[String, Int]()), node.getMetadata.get(HierarchyConstants.DEPTH).asInstanceOf[Int] + 1, id, nodeList, hierarchyStructure, nxtEnrichedNodeList, request)
                     } else
