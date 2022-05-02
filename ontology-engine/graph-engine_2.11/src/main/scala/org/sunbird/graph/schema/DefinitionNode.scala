@@ -68,9 +68,12 @@ object DefinitionNode {
     }
 
     def getNode(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
+        println("DefinitionNode :: getNode ==="+request)
         val schemaName: String = request.getContext.get("schemaName").asInstanceOf[String]
+        println("DefinitionNode :: getNode :: schemaName==="+schemaName)
         val definition = DefinitionFactory.getDefinition(request.getContext.get("graph_id").asInstanceOf[String]
             , schemaName, request.getContext.get("version").asInstanceOf[String])
+        println("DefinitionNode :: getNode :: definition==="+definition)
         definition.getNode(request.get("identifier").asInstanceOf[String], "read", if(request.getRequest.containsKey("mode")) request.get("mode").asInstanceOf[String] else "read")
     }
 

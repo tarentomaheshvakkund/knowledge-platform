@@ -53,12 +53,18 @@ object DataNode {
 
     @throws[Exception]
     def read(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
+      println("DataNode :: read ==="+request)
         DefinitionNode.getNode(request).map(node => {
+          println("DataNode :: getNode :: read==="+node)
             val schema = node.getObjectType.toLowerCase.replace("image", "")
+            println("DataNode :: read :: schema==="+schema)
             val objectType : String = request.getContext.get("objectType").asInstanceOf[String]
+            println("DataNode :: read :: objectType==="+objectType)
             request.getContext.put("schemaName", schema)
             val fields: List[String] = Optional.ofNullable(request.get("fields").asInstanceOf[util.List[String]]).orElse(new util.ArrayList[String]()).toList
+             println("DataNode :: read :: fields==="+fields)
             val extPropNameList = DefinitionNode.getExternalProps(request.getContext.get("graph_id").asInstanceOf[String], request.getContext.get("version").asInstanceOf[String], schema)
+             println("DataNode :: read :: extPropNameList==="+extPropNameList)
             if (CollectionUtils.isNotEmpty(extPropNameList) && null != fields && fields.exists(field => extPropNameList.contains(field)))
                 populateExternalProperties(fields, node, request, extPropNameList)
             else

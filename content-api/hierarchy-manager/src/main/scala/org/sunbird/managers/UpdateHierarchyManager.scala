@@ -51,7 +51,7 @@ object UpdateHierarchyManager {
                   //TelemetryManager.info("NodeList for root id :" + rootId +" :: " + ScalaJsonUtils.serialize(nodeMap))
                   val idMap: mutable.Map[String, String] = mutable.Map()
                   idMap += (rootId -> rootId)
-                  println("updateHierarchy :: nodes :" + nodes)
+                  println("updateHierarchy :: nodes :" +nodes)
                   println("updateHierarchy :: nodesModified:"+nodesModified)
                   updateNodesModifiedInNodeList(nodes, nodesModified, request, idMap).map(modifiedNodeList => {
                       println("updateHierarchy :: modifiedNodeList :" + modifiedNodeList)
@@ -59,6 +59,7 @@ object UpdateHierarchyManager {
                           TelemetryManager.log("Children for root id :" + rootId +" :: " + JsonUtils.serialize(children))
                           println("Children for root id :" + rootId +" :: " + JsonUtils.serialize(children))
                           updateHierarchyData(rootId, children, modifiedNodeList, request).map(node => {
+                              println("request :" + request )
                               val response = ResponseHandler.OK()
                               response.put(HierarchyConstants.CONTENT_ID, rootId)
                               idMap.remove(rootId)
@@ -137,7 +138,7 @@ object UpdateHierarchyManager {
         val req = new Request(request)
         req.put(HierarchyConstants.IDENTIFIER, rootNode.getIdentifier)
         oec.graphService.readExternalProps(req, List(HierarchyConstants.HIERARCHY)).map(response => {
-            println("fetchHierarchy response  ==="+response)
+            println("fetchHierarchy response  ==="+JsonUtils.serialize(response))
             if (ResponseHandler.checkError(response) && ResponseHandler.isResponseNotFoundError(response)) {
                 if (CollectionUtils.containsAny(HierarchyConstants.HIERARCHY_LIVE_STATUS, rootNode.getMetadata.get("status").asInstanceOf[String]))
                     throw new ServerException(HierarchyErrorCodes.ERR_HIERARCHY_NOT_FOUND, "No hierarchy is present in cassandra for identifier:" + rootNode.getIdentifier)
@@ -149,7 +150,9 @@ object UpdateHierarchyManager {
                         request.getContext.put("shouldImageDelete", shouldImageBeDeleted(rootNode).asInstanceOf[AnyRef])
                         req.put(HierarchyConstants.IDENTIFIER, if (!rootNode.getIdentifier.endsWith(HierarchyConstants.IMAGE_SUFFIX)) rootNode.getIdentifier + HierarchyConstants.IMAGE_SUFFIX else rootNode.getIdentifier)
                     }
+                    println("fetchHierarchy req  ==="+JsonUtils.serialize(req))
                     oec.graphService.readExternalProps(req, List(HierarchyConstants.HIERARCHY)).map(resp => {
+                        println("fetchHierarchy resp  ==="+JsonUtils.serialize(resp))
                         resp.getResult.toMap.getOrElse(HierarchyConstants.HIERARCHY, "").asInstanceOf[String]
                     }) recover { case e: ResourceNotFoundException => TelemetryManager.log("No hierarchy is present in cassandra for identifier:" + rootNode.getIdentifier) }
                 }
@@ -523,6 +526,7 @@ object UpdateHierarchyManager {
         request.put(HierarchyConstants.IDENTIFIER, identifier)
         request.put(HierarchyConstants.MODE, HierarchyConstants.READ_MODE)
         request.put(HierarchyConstants.FIELDS, new java.util.ArrayList[String]())
+        println("getContentNode :: request ==="+request)
         DataNode.read(request)
     }
 
