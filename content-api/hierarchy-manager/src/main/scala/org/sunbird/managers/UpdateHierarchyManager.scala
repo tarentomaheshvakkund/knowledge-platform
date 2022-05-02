@@ -288,7 +288,9 @@ object UpdateHierarchyManager {
     }
 
     private def validateNodes(nodeList: java.util.List[Node], rootId: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[List[Node]] = {
+        println("validateNodes :: nodeList::"+nodeList)
         val nodesToValidate = nodeList.filter(node => StringUtils.equals(HierarchyConstants.PARENT, node.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String]) || StringUtils.equalsAnyIgnoreCase(rootId, node.getIdentifier)).toList
+        println("validateNodes :: nodesToValidate::"+nodesToValidate)
         DefinitionNode.updateJsonPropsInNodes(nodeList.toList, HierarchyConstants.TAXONOMY_ID, HierarchyConstants.COLLECTION_SCHEMA_NAME, HierarchyConstants.SCHEMA_VERSION)
         //TODO: Use actual object schema instead of collection, when another object with visibility parent introduced.
         DefinitionNode.validateContentNodes(nodesToValidate, HierarchyConstants.TAXONOMY_ID, HierarchyConstants.COLLECTION_SCHEMA_NAME, HierarchyConstants.SCHEMA_VERSION)
@@ -369,13 +371,19 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     private def getPreparedHierarchyData(nodeList: List[Node], rootId: String, childrenIdentifiersMap: Map[String, Map[String, Int]], request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[java.util.List[java.util.Map[String, AnyRef]]] = {
+        println("getPreparedHierarchyData :: nodeList :" +nodeList)
+        println("getPreparedHierarchyData :: rootId :" +rootId)
+        println("getPreparedHierarchyData :: childrenIdentifiersMap :" +childrenIdentifiersMap)
         if (MapUtils.isNotEmpty(childrenIdentifiersMap)) {
             val updatedNodeList = getTempNode(nodeList, rootId) :: List()
+            println("getPreparedHierarchyData :: updatedNodeList :" +updatedNodeList)
             updateHierarchyRelatedData(childrenIdentifiersMap.getOrElse(rootId, Map[String, Int]()), 1,
                 rootId, nodeList, childrenIdentifiersMap, updatedNodeList, request).map(finalEnrichedNodeList => {
                 TelemetryManager.info("Final enriched list size: " + finalEnrichedNodeList.size)
+                println("getPreparedHierarchyData :: Final enriched list:"+finalEnrichedNodeList)
                 val childNodeIds = finalEnrichedNodeList.map(node => node.getIdentifier.replaceAll(".img", "")).filterNot(id => StringUtils.containsIgnoreCase(rootId, id)).distinct
                 TelemetryManager.info("Final enriched ids (childNodes): " + childNodeIds + " :: size: " + childNodeIds.size)
+                println("getPreparedHierarchyData :: Final enriched ids (childNodes)::"+childNodeIds)
                 // UNDERSTANDING: below we used nodeList to update DEPTH and CHILD_NODES. It automatically updated to finalEnrichedNodeList.
                 // Because, the Node object is a Java POJO with metadata using java.util.Map.
                 updateNodeList(nodeList, rootId, new java.util.HashMap[String, AnyRef]() {
@@ -504,7 +512,9 @@ object UpdateHierarchyManager {
     }
 
     private def updateNodeList(nodeList: List[Node], id: String, metadata: java.util.HashMap[String, AnyRef]): Unit = {
-        println("updateNodeList method called ")
+        println("updateNodeList :: nodeList "+nodeList)
+        println("updateNodeList :: id "+id)
+        println("updateNodeList :: metadata "+metadata)
         nodeList.foreach(node => {
             if(node.getIdentifier.startsWith(id)){
                 node.getMetadata.putAll(metadata)
