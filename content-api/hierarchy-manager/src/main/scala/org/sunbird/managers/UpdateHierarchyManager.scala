@@ -432,7 +432,7 @@ object UpdateHierarchyManager {
 //                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).orNull
                     nodeList.foreach(p => println("updateHierarchyRelatedData:: In getContentNode map:: nodeList: " + p.getIdentifier))
                     println("updateHierarchyRelatedData:: In getContentNode map:: rootId: " + rootId)
-                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).find(p => p.getIdentifier.equals(rootId)).orNull
+                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).find(p => p.getIdentifier.equals(rootId+".img")).orNull
                     println("updateHierarchyRelatedData:: In getContentNode map:: parentNode: " + parentNode)
                     println("parentNode: " + parentNode)
                     val nxtEnrichedNodeList = if (null != parentNode) {
