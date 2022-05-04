@@ -459,9 +459,11 @@ object UpdateHierarchyManager {
             }
         })
         if (CollectionUtils.isNotEmpty(futures)) {
+            println("Inside the isNotEmpty")
             val listOfFutures = Future.sequence(futures.toList)
             listOfFutures.map(f => f.flatten.distinct)
         } else
+            println("Inside the else part::" + enrichedNodeList)
             Future(enrichedNodeList)
     }
 
