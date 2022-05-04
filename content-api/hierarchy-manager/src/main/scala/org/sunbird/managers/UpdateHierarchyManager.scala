@@ -430,13 +430,10 @@ object UpdateHierarchyManager {
                 println("Get ContentNode as TempNode is null for ID: " + id)
                 getContentNode(id, HierarchyConstants.TAXONOMY_ID).map(node => {
 //                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).orNull
-                val parentNode: Node = if(nodeList.find(p => p.getIdentifier.equals(parent)) == null) {
-                    val rootNode = nodeList.find(p => p.getIdentifier.equals(rootId)).orNull
-                    println("rootNode find:: " + rootNode)
-                    rootNode
-                } else {
-                    nodeList.find(p => p.getIdentifier.equals(parent)).orNull
-                }
+                    nodeList.foreach(p => println("updateHierarchyRelatedData:: In getContentNode map:: nodeList: " + p.getIdentifier))
+                    println("updateHierarchyRelatedData:: In getContentNode map:: rootId: " + rootId)
+                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).find(p => p.getIdentifier.equals(rootId)).orNull
+                    println("updateHierarchyRelatedData:: In getContentNode map:: parentNode: " + parentNode)
                     println("parentNode: " + parentNode)
                     val nxtEnrichedNodeList = if (null != parentNode) {
                         TelemetryManager.info(s"ObjectType for $parent is ${parentNode.getObjectType}...")
