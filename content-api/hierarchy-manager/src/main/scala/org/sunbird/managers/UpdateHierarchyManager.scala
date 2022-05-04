@@ -430,8 +430,8 @@ object UpdateHierarchyManager {
                 println("Get ContentNode as TempNode is null for ID: " + id)
                 getContentNode(id, HierarchyConstants.TAXONOMY_ID).map(node => {
 //                    val parentNode: Node = nodeList.find(p => p.getIdentifier.equals(parent)).orNull
-                    val parentNode: Node = if(nodeList.find(p => p.getIdentifier.equals(parent)) == null) {
-                        if(nodeList.find(p => p.getIdentifier.equals(rootId)) == null)
+                        val parentNode: Node = if(nodeList.find(p => p.getIdentifier.equals(parent)).orNull == null) {
+                            if(nodeList.find(p => p.getIdentifier.equals(rootId)).orNull == null)
                             nodeList.find(p => p.getIdentifier.equals(rootId+".img")).orNull
                         else
                             nodeList.find(p => p.getIdentifier.equals(rootId)).orNull
