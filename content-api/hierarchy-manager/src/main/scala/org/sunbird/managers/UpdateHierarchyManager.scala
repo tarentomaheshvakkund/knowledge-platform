@@ -458,11 +458,14 @@ object UpdateHierarchyManager {
                 }).flatMap(f => f) recoverWith { case e: CompletionException => throw e.getCause }
             }
         })
-        if (CollectionUtils.isNotEmpty(futures)) {
+        val outputNodesListFuture = if (CollectionUtils.isNotEmpty(futures)) {
             val listOfFutures = Future.sequence(futures.toList)
             listOfFutures.map(f => f.flatten.distinct)
         } else
             Future(enrichedNodeList)
+            
+        outputNodesListFuture.map(rec => println("enriched Nodes List: " + rec))
+        outputNodesListFuture
     }
 
     private def populateHierarchyRelatedData(tempNode: Node, depth: Int, index: Int, parent: String) = {
