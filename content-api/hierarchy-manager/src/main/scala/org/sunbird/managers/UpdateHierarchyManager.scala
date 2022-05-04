@@ -412,7 +412,7 @@ object UpdateHierarchyManager {
             val index = child._2 + 1
             println("updateHierarchyRelatedData :: index "+index)
             val tempNode = getTempNode(nodeList, id)
-            println("updateHierarchyRelatedData :: tempNode "+ tempNode.getMetadata)
+            println("updateHierarchyRelatedData :: tempNode "+tempNode.getMetadata)
             if (null != tempNode && StringUtils.equalsIgnoreCase(HierarchyConstants.PARENT, tempNode.getMetadata.get(HierarchyConstants.VISIBILITY).asInstanceOf[String])) {
                 println("updateHierarchyRelatedData :: tempNode Parent Node "+tempNode)
                 populateHierarchyRelatedData(tempNode, depth, index, parent)
@@ -472,6 +472,9 @@ object UpdateHierarchyManager {
             listOfFutures.map(f => f.flatten.distinct)
         } else
             Future(enrichedNodeList)
+            
+        outputNodesListFuture.map(rec => println("enriched Nodes List: " + rec))
+        outputNodesListFuture
     }
 
     private def populateHierarchyRelatedData(tempNode: Node, depth: Int, index: Int, parent: String) = {
