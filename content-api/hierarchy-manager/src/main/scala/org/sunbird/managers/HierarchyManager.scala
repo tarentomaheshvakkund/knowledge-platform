@@ -113,26 +113,36 @@ object HierarchyManager {
 
     @throws[Exception]
     def getHierarchy(request : Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+        println("--- In get hierarhcy API---")
         val mode = request.get("mode").asInstanceOf[String]
-        if(StringUtils.isNotEmpty(mode) && mode.equals("edit"))
+        println("mode = " + mode)
+        if(StringUtils.isNotEmpty(mode) && mode.equals("edit")) {
+            println("Getting unpublished hierarchy")
             getUnPublishedHierarchy(request)
-        else
+        } else {
+            println("Getting published hierarchy")
             getPublishedHierarchy(request)
+        }
     }
 
     @throws[Exception]
     def getUnPublishedHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+        println("-- getUnPublishedHierarchy --")
         val rootNodeFuture = getRootNode(request)
+        println("-- rootNodeFuture =  --" + rootNodeFuture)
         rootNodeFuture.map(rootNode => {
+            println("-- rootNode =  --" + rootNode)
             if (StringUtils.equalsIgnoreCase("Retired", rootNode.getMetadata.getOrDefault("status", "").asInstanceOf[String])) {
                 Future(ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "rootId " + request.get("rootId") + " does not exist"))
             }
             val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
             var metadata: util.Map[String, AnyRef] = NodeUtil.serialize(rootNode, new util.ArrayList[String](), request.getContext.get("schemaName").asInstanceOf[String], request.getContext.get("version").asInstanceOf[String])
             val hierarchy = fetchHierarchy(request, rootNode.getIdentifier)
+            println("-- hierarchy =  --" + hierarchy)
             //TODO: Remove content Mapping for backward compatibility
             HierarchyBackwardCompatibilityUtil.setContentAndCategoryTypes(metadata)
             hierarchy.map(hierarchy => {
+                println("-- hierarchy obj  =  --" + hierarchy)
                 val children = hierarchy.getOrDefault("children", new util.ArrayList[java.util.Map[String, AnyRef]]).asInstanceOf[util.ArrayList[java.util.Map[String, AnyRef]]]
                 //TODO: Remove content Mapping for backward compatibility
                 updateContentMappingInChildren(children)
@@ -153,8 +163,11 @@ object HierarchyManager {
             }).flatMap(f => f)
         }).flatMap(f => f) recoverWith { case e: ResourceNotFoundException => {
                 val searchResponse = searchRootIdInElasticSearch(request.get("rootId").asInstanceOf[String])
+            println("-- searchResponse1 =  --" + searchResponse)
                 searchResponse.map(rootHierarchy => {
+                    println("-- rootHierarchy1 =  --" + rootHierarchy)
                     if(!rootHierarchy.isEmpty && StringUtils.isNotEmpty(rootHierarchy.asInstanceOf[util.HashMap[String, AnyRef]].get("identifier").asInstanceOf[String])){
+                        println("-- rootHierarchy is not empty" )
                         //TODO: Remove content Mapping for backward compatibility
                         HierarchyBackwardCompatibilityUtil.setContentAndCategoryTypes(rootHierarchy.asInstanceOf[util.HashMap[String, AnyRef]])
                         val unPublishedBookmarkHierarchy = getUnpublishedBookmarkHierarchy(request, rootHierarchy.asInstanceOf[util.HashMap[String, AnyRef]].get("identifier").asInstanceOf[String])
@@ -184,16 +197,23 @@ object HierarchyManager {
     @throws[Exception]
     def getPublishedHierarchy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
         val redisHierarchy = RedisCache.get(hierarchyPrefix + request.get("rootId"))
+        println("redisHierarchy from cache for" + hierarchyPrefix + request.get("rootId") +" = " + redisHierarchy)
         val hierarchyFuture = if (StringUtils.isNotEmpty(redisHierarchy)) {
             Future(mapAsJavaMap(Map("content" -> JsonUtils.deserialize(redisHierarchy, classOf[java.util.Map[String, AnyRef]]))))
         } else getCassandraHierarchy(request)
+        println("hierarchyFuture = " + hierarchyFuture)
         hierarchyFuture.map(result => {
+            println("hierarchy result = " + result)
             if (!result.isEmpty) {
+                println(" -- result not empty -- ")
                 val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
                 val rootHierarchy  = result.get("content").asInstanceOf[util.Map[String, AnyRef]]
+                println("bookmarkId = " + bookmarkId + " rootHierarchy = " + rootHierarchy )
                 if (StringUtils.isEmpty(bookmarkId)) {
+                    println("--- return rootHierarchy--")
                     ResponseHandler.OK.put("content", rootHierarchy)
                 } else {
+                    println("--- bookmarkHierarchy--")
                     val children = rootHierarchy.getOrElse("children", new util.ArrayList[util.Map[String, AnyRef]]()).asInstanceOf[util.List[util.Map[String, AnyRef]]]
                     val bookmarkHierarchy = filterBookmarkHierarchy(children, bookmarkId)
                     if (MapUtils.isEmpty(bookmarkHierarchy)) {
@@ -224,10 +244,12 @@ object HierarchyManager {
     }
 
     private def getRootNode(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
+        println("-- getRootNode --")
         val req = new Request(request)
         req.put("identifier", request.get("rootId").asInstanceOf[String])
         req.put("mode", request.get("mode").asInstanceOf[String])
         req.put("fields",request.get("fields").asInstanceOf[java.util.List[String]])
+        println("req = " + req)
         DataNode.read(req)
     }
 
@@ -360,22 +382,31 @@ object HierarchyManager {
     }
 
     def fetchHierarchy(request: Request, identifier: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Map[String, AnyRef]] = {
+        println("-- fetchHierarchy --")
         val req = new Request(request)
         req.put("identifier", identifier)
         val responseFuture = oec.graphService.readExternalProps(req, List("hierarchy"))
+        println("-- responseFuture = " + responseFuture)
+        println("-- Iterating responseFuture --")
         responseFuture.map(response => {
+            println("---- response ==  " + response)
             if (!ResponseHandler.checkError(response)) {
                 val hierarchyString = response.getResult.toMap.getOrDefault("hierarchy", "").asInstanceOf[String]
+                println("hierarchyString == " + hierarchyString)
                 if (StringUtils.isNotEmpty(hierarchyString)) {
                     Future(JsonUtils.deserialize(hierarchyString, classOf[java.util.Map[String, AnyRef]]).toMap)
                 } else
                     Future(Map[String, AnyRef]())
             } else if (ResponseHandler.checkError(response) && response.getResponseCode.code() == 404 && Platform.config.hasPath("collection.image.migration.enabled") && Platform.config.getBoolean("collection.image.migration.enabled")) {
+                println("-- fetch hierarchy data again --")
                 req.put("identifier", identifier.replaceAll(".img", "") + ".img")
                 val responseFuture = oec.graphService.readExternalProps(req, List("hierarchy"))
+                println("-- responseFuture1 = " + responseFuture)
                 responseFuture.map(response => {
+                    println("---- response1 ==  " + response)
                     if (!ResponseHandler.checkError(response)) {
                         val hierarchyString = response.getResult.toMap.getOrDefault("hierarchy", "").asInstanceOf[String]
+                        println("hierarchyString1 == " + hierarchyString)
                         if (StringUtils.isNotEmpty(hierarchyString)) {
                             JsonUtils.deserialize(hierarchyString, classOf[java.util.Map[String, AnyRef]]).toMap
                         } else
@@ -393,34 +424,53 @@ object HierarchyManager {
     }
 
     def getCassandraHierarchy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[util.Map[String, AnyRef]] = {
+        println("-- getCassandraHierarchy --")
         val rootHierarchy: util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]()
         val hierarchy = fetchHierarchy(request, request.getRequest.get("rootId").asInstanceOf[String])
+        println("hierarchy data == " + hierarchy)
         hierarchy.map(hierarchy => {
+            println("hierarchy obj == " + hierarchy)
             if (!hierarchy.isEmpty) {
+                println("-- hierarchy obj not empty -- ")
                 if (StringUtils.isNotEmpty(hierarchy.getOrDefault("status", "").asInstanceOf[String]) && statusList.contains(hierarchy.getOrDefault("status", "").asInstanceOf[String])) {
                     //TODO: Remove mapping
                     val hierarchyMap = mapPrimaryCategories(hierarchy)
                     rootHierarchy.put("content", hierarchyMap)
+                    println("-- set hierarchy in redis =  -- " + hierarchyPrefix + request.get("rootId"))
                     RedisCache.set(hierarchyPrefix + request.get("rootId"), JsonUtils.serialize(hierarchyMap))
+                    println("-- done -- ")
                     Future(rootHierarchy)
                 } else {
+                    println("-- hierarchy empty status -- ")
                     Future(new util.HashMap[String, AnyRef]())
                 }
             } else {
+                println("-- hierarchy obj is empty -- ")
                 val searchResponse = searchRootIdInElasticSearch(request.get("rootId").asInstanceOf[String])
+                println("-- searchResponse -- " + searchResponse)
                 searchResponse.map(response => {
+                    println("-- response -- " + response)
                     if (!response.isEmpty) {
+                        println("-- response not empty -- ")
                         if (StringUtils.isNotEmpty(response.getOrDefault("identifier", "").asInstanceOf[String])) {
+                            println("-- iterate reponse -- ")
                             val parentHierarchy = fetchHierarchy(request, response.get("identifier").asInstanceOf[String])
+                            println("-- parentHierarchy -- " + parentHierarchy)
                             parentHierarchy.map(hierarchy => {
+                                println("-- hierarchy obj =  -- "+ hierarchy)
                                 if (!hierarchy.isEmpty) {
                                     if (StringUtils.isNoneEmpty(hierarchy.getOrDefault("status", "").asInstanceOf[String]) && statusList.contains(hierarchy.getOrDefault("status", "").asInstanceOf[String]) && CollectionUtils.isNotEmpty(mapAsJavaMap(hierarchy).get("children").asInstanceOf[util.ArrayList[util.HashMap[String, AnyRef]]])) {
                                         val bookmarkHierarchy = filterBookmarkHierarchy(mapAsJavaMap(hierarchy).get("children").asInstanceOf[util.ArrayList[util.Map[String, AnyRef]]], request.get("rootId").asInstanceOf[String])
                                         if (!bookmarkHierarchy.isEmpty) {
                                             //TODO: Remove mapping
+                                            println("-- bookmark hierarchy not empty -- ")
+                                            println("bookmarkHierarchy = " + bookmarkHierarchy)
                                             val hierarchyMap = mapPrimaryCategories(bookmarkHierarchy)
+                                            println("hierarchyMap = " + hierarchyMap)
                                             rootHierarchy.put("content", hierarchyMap)
+                                            println("Set redis cache = " + hierarchyPrefix + request.get("rootId"))
                                             RedisCache.set(hierarchyPrefix + request.get("rootId"), JsonUtils.serialize(hierarchyMap))
+                                            println("done")
                                             rootHierarchy
                                         } else {
                                             new util.HashMap[String, AnyRef]()
@@ -444,6 +494,7 @@ object HierarchyManager {
     }
 
     def searchRootIdInElasticSearch(rootId: String)(implicit ec: ExecutionContext): Future[util.Map[String, AnyRef]] = {
+        println("-- search root id in elasticsearch -- ")
         val mapper: ObjectMapper = new ObjectMapper()
         val searchRequest: util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]() {
             put("request", new util.HashMap[String, AnyRef]() {
@@ -463,10 +514,13 @@ object HierarchyManager {
                 })
             })
         }
+        println("-- searchRequest -- " + searchRequest)
         val url: String = if (Platform.config.hasPath("composite.search.url")) Platform.config.getString("composite.search.url") else "https://dev.sunbirded.org/action/composite/v3/search"
+        println("-- url -- " + url)
         val httpResponse: HttpResponse[String] = Unirest.post(url).header("Content-Type", "application/json").body(mapper.writeValueAsString(searchRequest)).asString
         if (httpResponse.getStatus == 200) {
             val response: Response = JsonUtils.deserialize(httpResponse.getBody, classOf[Response])
+            println("-- response -- " + response)
             if (response.get("count").asInstanceOf[Integer] > 0 && CollectionUtils.isNotEmpty(response.get("content").asInstanceOf[util.ArrayList[util.Map[String, AnyRef]]])) {
                 Future(response.get("content").asInstanceOf[util.ArrayList[util.Map[String, AnyRef]]].get(0))
             } else {
@@ -596,6 +650,7 @@ object HierarchyManager {
     }
 
     private def mapPrimaryCategories(hierarchy: java.util.Map[String, AnyRef]):util.Map[String, AnyRef] = {
+        println("-- mapPrimaryCategory -- ")
         val updatedHierarchy = new util.HashMap[String, AnyRef](hierarchy)
         if (mapPrimaryCategoriesEnabled)
             HierarchyBackwardCompatibilityUtil.setContentAndCategoryTypes(updatedHierarchy)
