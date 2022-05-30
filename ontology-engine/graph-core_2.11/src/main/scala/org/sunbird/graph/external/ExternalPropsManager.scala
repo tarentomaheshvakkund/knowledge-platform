@@ -21,10 +21,13 @@ object ExternalPropsManager {
     }
 
     def fetchProps(request: Request, fields: List[String])(implicit ec: ExecutionContext): Future[Response] = {
+        println("-- graphService.readExternalProps.fetchProps -- request = " + request )
         val schemaName: String = request.getContext.get("schemaName").asInstanceOf[String]
         val version: String = request.getContext.get("version").asInstanceOf[String]
         val primaryKey: util.List[String] = SchemaValidatorFactory.getExternalPrimaryKey(schemaName, version)
+        println("schemaName = " + schemaName + " version = "+ version + " primaryKey = "+ primaryKey)
         val store = ExternalStoreFactory.getExternalStore(SchemaValidatorFactory.getExternalStoreName(schemaName, version), primaryKey)
+        println("store = " + store)
         if (request.get("identifiers") != null) store.read(request.get("identifiers").asInstanceOf[List[String]], fields, getPropsDataType(schemaName, version))
         else store.read(request.get("identifier").asInstanceOf[String], fields, getPropsDataType(schemaName, version))
     }
