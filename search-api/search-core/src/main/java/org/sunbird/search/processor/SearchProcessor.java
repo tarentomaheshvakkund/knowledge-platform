@@ -327,9 +327,9 @@ public class SearchProcessor {
 		QueryBuilder queryBuilder = null;
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
-		formQuery(properties, queryBuilder, boolQuery, totalOperation);
+		formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
 		if(searchDTO.getMultiFilterProperties() != null) {
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR);
+			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
 		}		
 
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
@@ -341,7 +341,7 @@ public class SearchProcessor {
 		return boolQuery;
 	}
 
-	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation) {
+	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -358,7 +358,7 @@ public class SearchProcessor {
 			if (propertyName.equals("*")) {
 				relevanceSort = true;
 				propertyName = "all_fields";
-				queryBuilder = getAllFieldsPropertyQuery(values);
+				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
 				boolQuery.must(queryBuilder);
 				continue;
 			}
@@ -600,7 +600,7 @@ public class SearchProcessor {
 		BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
 		for (Object value : values) {
 				queryBuilder.must(
-						QueryBuilders.matchQuery(propertyName, value).operator(Operator.AND));
+						QueryBuilders.matchQuery(propertyName, value).operator(Operator.AND).fuzzyTranspositions(false));
 		}
 		return queryBuilder;
 	}
@@ -627,7 +627,7 @@ public class SearchProcessor {
 	 * @param values
 	 * @return
 	 */
-	private QueryBuilder getAllFieldsPropertyQuery(List<Object> values) {
+	private QueryBuilder getAllFieldsPropertyQuery(List<Object> values, Boolean fuzzy) {
 		List<String> queryFields = ElasticSearchUtil.getQuerySearchFields();
 		Map<String, Float> queryFieldsMap = new HashMap<>();
 		for (String field : queryFields) {
@@ -638,9 +638,15 @@ public class SearchProcessor {
 		}
 		BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
 		for (Object value : values) {
-			queryBuilder
-					.should(QueryBuilders.multiMatchQuery(value).fields(queryFieldsMap)
-							.operator(Operator.AND).type(Type.CROSS_FIELDS).lenient(true));
+			if (fuzzy) {
+				queryBuilder
+						.should(QueryBuilders.multiMatchQuery(value).fields(queryFieldsMap)
+								.operator(Operator.AND).fuzziness("AUTO").lenient(true));
+			} else {
+				queryBuilder
+						.should(QueryBuilders.multiMatchQuery(value).fields(queryFieldsMap)
+								.operator(Operator.AND).type(Type.CROSS_FIELDS).fuzzyTranspositions(false).lenient(true));
+			}
 		}
 
 		return queryBuilder;
@@ -660,13 +666,13 @@ public class SearchProcessor {
 				for(Object value: dataList) {
 					queryBuilder
 							.should(QueryBuilders.matchQuery(key + SearchConstants.RAW_FIELD_EXTENSION, value)
-									.boost(Integer.valueOf((int) data.get(0)).floatValue()));
+									.boost(Integer.valueOf((int) data.get(0)).floatValue()).fuzzyTranspositions(false));
 				}
 			}
 			else {
 				queryBuilder.should(
 						QueryBuilders.matchQuery(key + SearchConstants.RAW_FIELD_EXTENSION, data.get(1))
-								.boost(Integer.valueOf((int) data.get(0)).floatValue()));
+								.boost(Integer.valueOf((int) data.get(0)).floatValue()).fuzzyTranspositions(false));
 			}
 		}
 		return queryBuilder;
@@ -799,10 +805,10 @@ public class SearchProcessor {
 		for (Object value : values) {
 			if (match) {
 				queryBuilder.should(
-						QueryBuilders.matchQuery(propertyName, value));
+						QueryBuilders.matchQuery(propertyName, value).fuzzyTranspositions(false));
 			} else {
 				queryBuilder.mustNot(
-						QueryBuilders.matchQuery(propertyName, value));
+						QueryBuilders.matchQuery(propertyName, value).fuzzyTranspositions(false));
 			}
 		}
 
@@ -965,7 +971,7 @@ public class SearchProcessor {
 	}
 
 	private QueryBuilder getQuery(SearchDTO searchDTO) {
-		return searchDTO.isFuzzySearch() ? prepareFilteredSearchQuery(searchDTO) : prepareSearchQuery(searchDTO);
+		return prepareSearchQuery(searchDTO);
 	}
 
 
