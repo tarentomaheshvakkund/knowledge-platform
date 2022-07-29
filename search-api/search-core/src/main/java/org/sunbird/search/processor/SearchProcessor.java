@@ -493,7 +493,7 @@ public class SearchProcessor {
 				relevanceSort = true;
 				propertyName = "all_fields";
 				filterFunctionBuilder
-						.add(new FilterFunctionBuilder(getAllFieldsPropertyQuery(values),
+						.add(new FilterFunctionBuilder(getAllFieldsPropertyQuery(values, Boolean.FALSE),
 								ScoreFunctionBuilders.weightFactorFunction(weightages.get("default_weightage"))));
 				continue;
 			}
