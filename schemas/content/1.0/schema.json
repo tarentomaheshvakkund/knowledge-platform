@@ -1250,7 +1250,8 @@
             "type" : "string",
             "enum": [
                 "InReview",
-                "Reviewed"
+                "Reviewed",
+                "SentToPublish"
             ]
         },
         "boardIds": {
