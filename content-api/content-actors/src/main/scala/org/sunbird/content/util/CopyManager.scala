@@ -77,7 +77,7 @@ object CopyManager {
                     artifactUpload(node, copiedNode, request)
                 }else{
                     Future(copiedNode)
-                }            }).flatMap(f => f)
+                }}).flatMap(f => f)
         }).flatMap(f => f)
     }
 
