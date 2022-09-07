@@ -705,6 +705,12 @@
     },
     "reviewStatus": {
       "type": "string"
+    },
+    "competencies_v3": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "additionalProperties": false
