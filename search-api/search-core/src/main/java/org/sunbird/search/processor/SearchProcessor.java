@@ -936,5 +936,6 @@ public class SearchProcessor {
 
 	private QueryBuilder getQuery(SearchDTO searchDTO) {
 		return searchDTO.isFuzzySearch() ? (prepareSearchQuery(searchDTO) == null ?	prepareFilteredSearchQuery(searchDTO) : prepareSearchQuery(searchDTO)) : prepareSearchQuery(searchDTO);
+
 	}
 }
