@@ -42,7 +42,8 @@ public class SearchActor extends SearchBaseActor {
         try{
             if (StringUtils.equalsIgnoreCase("INDEX_SEARCH", operation)) {
                 SearchDTO searchDTO = getSearchDTO(request);
-                Future<Map<String, Object>> searchResult = processor.processSearch(searchDTO, true);
+                int pass= 1;
+                Future<Map<String, Object>> searchResult = processor.processSearch(searchDTO, true, pass);
                 return searchResult.map(new Mapper<Map<String, Object>, Response>() {
                     @Override
                     public Response apply(Map<String, Object> lstResult) {
@@ -594,7 +595,7 @@ public class SearchActor extends SearchBaseActor {
                             String objectType = ((String) map.getOrDefault("objectType", "")).replaceAll("Image", "");
                             if(StringUtils.equalsIgnoreCase("Collection", objectType) || StringUtils.equalsIgnoreCase("Asset", objectType))
                                 map.replace("objectType", "Content");
-                            else 
+                            else
                                 map.replace("objectType", objectType);
                             if (StringUtils.isNotBlank(objectType)) {
                                 String key = getResultParamKey(objectType);
