@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder.Type;
@@ -29,6 +30,7 @@ import org.sunbird.telemetry.logger.TelemetryManager;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.Future;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -71,10 +73,10 @@ public class SearchProcessor {
 				Aggregations aggregations = searchResult.getAggregations();
 				if (null != aggregations) {
 					AggregationsResultTransformer transformer = new AggregationsResultTransformer();
-					if(CollectionUtils.isNotEmpty(searchDTO.getFacets())) {
+					if (CollectionUtils.isNotEmpty(searchDTO.getFacets())) {
 						resp.put("facets", (List<Map<String, Object>>) ElasticSearchUtil
 								.getCountFromAggregation(aggregations, groupByFinalList, transformer));
-					} else if(CollectionUtils.isNotEmpty(searchDTO.getAggregations())){
+					} else if (CollectionUtils.isNotEmpty(searchDTO.getAggregations())) {
 						resp.put("aggregations", aggregateResult(aggregations));
 					}
 
@@ -85,25 +87,31 @@ public class SearchProcessor {
 		}, ExecutionContext.Implicits$.MODULE$.global());
 	}
 
+
+
 	public Future<Map<String, Object>> processSearch(SearchDTO searchDTO, boolean includeResults, int pass)
 			throws Exception {
 		List<Map<String, Object>> groupByFinalList = new ArrayList<Map<String, Object>>();
-		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, true,pass);
+		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, true, pass);
 		Future<SearchResponse> searchResponse = ElasticSearchUtil.search(
 				SearchConstants.COMPOSITE_SEARCH_INDEX,
 				query);
 
-		//System.out.println("        SEARCH RESPONSE     :       "+searchResponse);
-		if(((SearchResponse) searchResponse).getHits().getTotalHits() == 0 && pass == 1)
-		{
-			query = processSearchQuery(searchDTO, groupByFinalList, true,++pass);
+		boolean exactMatchExists=ElasticSearchUtil.checkMatchExist(SearchConstants.COMPOSITE_SEARCH_INDEX,
+				query);
+
+		if(!exactMatchExists){
+			query = processSearchQuery(searchDTO, groupByFinalList, true, ++pass);
 			searchResponse = ElasticSearchUtil.search(
 					SearchConstants.COMPOSITE_SEARCH_INDEX,
 					query);
 		}
+
 		return searchResponse.map(new Mapper<SearchResponse, Map<String, Object>>() {
 			public Map<String, Object> apply(SearchResponse searchResult) {
 				Map<String, Object> resp = new HashMap<>();
+
+
 				if (includeResults) {
 					if (searchDTO.isFuzzySearch()) {
 						List<Map> results = ElasticSearchUtil.getDocumentsFromSearchResultWithScore(searchResult);
@@ -116,19 +124,53 @@ public class SearchProcessor {
 				Aggregations aggregations = searchResult.getAggregations();
 				if (null != aggregations) {
 					AggregationsResultTransformer transformer = new AggregationsResultTransformer();
-					if(CollectionUtils.isNotEmpty(searchDTO.getFacets())) {
+					if (CollectionUtils.isNotEmpty(searchDTO.getFacets())) {
 						resp.put("facets", (List<Map<String, Object>>) ElasticSearchUtil
 								.getCountFromAggregation(aggregations, groupByFinalList, transformer));
-					} else if(CollectionUtils.isNotEmpty(searchDTO.getAggregations())){
+					} else if (CollectionUtils.isNotEmpty(searchDTO.getAggregations())) {
 						resp.put("aggregations", aggregateResult(aggregations));
 					}
 
 				}
 
+
+
 				resp.put("count", (int) searchResult.getHits().getTotalHits());
 				return resp;
 			}
 		}, ExecutionContext.Implicits$.MODULE$.global());
+
+
+
+
+
+	}
+
+	private Map<String,Object> getMatchCount(Future<SearchResponse> searchResponse) {
+
+		return (Map<String, Object>) searchResponse.map(new Mapper<SearchResponse, Map<String,Object>>() {
+			public Map<String,Object> apply(SearchResponse searchResult) {
+				Map<String,Object> resp = new HashMap<>();
+				resp.put("hits",searchResult.getHits().getTotalHits());
+				return resp;
+			}
+		}, ExecutionContext.Implicits$.MODULE$.global());
+
+	}
+
+	private Future<Boolean> exactMatchExists(Future<SearchResponse> searchResponse) {
+		return searchResponse.map(new Mapper<SearchResponse, Boolean>() {
+			public Boolean apply(SearchResponse searchResult) {
+				Map<String,Object> resp = new HashMap<>();
+				long matches = searchResult.getHits().getTotalHits();
+				if(matches>0)
+					return  true;
+				else
+					return false;
+
+			}
+		}, ExecutionContext.Implicits$.MODULE$.global());
+
 	}
 	public Map<String, Object> processCount(SearchDTO searchDTO) throws Exception {
 		Map<String, Object> response = new HashMap<String, Object>();
@@ -282,11 +324,12 @@ public class SearchProcessor {
 				sorting.put("name", "asc");
 				sorting.put("lastUpdatedOn", "desc");
 			}
-			for (String key : sorting.keySet()){
-				if(key.contains(".")){
+			for (String key : sorting.keySet()) {
+				if (key.contains(".")) {
 					String nestedPath = key.split("\\.")[0];
-					searchSourceBuilder.sort(SortBuilders.fieldSort(key + SearchConstants.RAW_FIELD_EXTENSION).order(getSortOrder(sorting.get(key))).setNestedSort(new NestedSortBuilder(nestedPath)));
-				} else{
+					searchSourceBuilder.sort(SortBuilders.fieldSort(key + SearchConstants.RAW_FIELD_EXTENSION)
+							.order(getSortOrder(sorting.get(key))).setNestedSort(new NestedSortBuilder(nestedPath)));
+				} else {
 					searchSourceBuilder.sort(key + SearchConstants.RAW_FIELD_EXTENSION,
 							getSortOrder(sorting.get(key)));
 				}
@@ -309,7 +352,7 @@ public class SearchProcessor {
 			searchSourceBuilder.fetchSource(fields.toArray(new String[fields.size()]), null);
 		}
 
-		if (searchDTO.getFacets() != null && groupByFinalList != null) {
+		if (searchDTO.getFacets() != null && groupByFinalList != null && pass == 1) {
 			for (String facet : searchDTO.getFacets()) {
 				Map<String, Object> groupByMap = new HashMap<String, Object>();
 				groupByMap.put("groupByParent", facet);
@@ -319,7 +362,7 @@ public class SearchProcessor {
 
 		searchSourceBuilder.size(searchDTO.getLimit());
 		searchSourceBuilder.from(searchDTO.getOffset());
-		QueryBuilder query = getSearchQuery(searchDTO,pass);
+		QueryBuilder query = getSearchQuery(searchDTO, pass);
 		if (searchDTO.isFuzzySearch())
 			relevanceSort = true;
 
@@ -333,11 +376,12 @@ public class SearchProcessor {
 				sorting.put("name", "asc");
 				sorting.put("lastUpdatedOn", "desc");
 			}
-			for (String key : sorting.keySet()){
-				if(key.contains(".")){
+			for (String key : sorting.keySet()) {
+				if (key.contains(".")) {
 					String nestedPath = key.split("\\.")[0];
-					searchSourceBuilder.sort(SortBuilders.fieldSort(key + SearchConstants.RAW_FIELD_EXTENSION).order(getSortOrder(sorting.get(key))).setNestedSort(new NestedSortBuilder(nestedPath)));
-				} else{
+					searchSourceBuilder.sort(SortBuilders.fieldSort(key + SearchConstants.RAW_FIELD_EXTENSION)
+							.order(getSortOrder(sorting.get(key))).setNestedSort(new NestedSortBuilder(nestedPath)));
+				} else {
 					searchSourceBuilder.sort(key + SearchConstants.RAW_FIELD_EXTENSION,
 							getSortOrder(sorting.get(key)));
 				}
@@ -348,6 +392,7 @@ public class SearchProcessor {
 		searchSourceBuilder.trackScores(true);
 		return searchSourceBuilder;
 	}
+
 	/**
 	 * @param groupByList
 	 * @param searchSourceBuilder
@@ -386,7 +431,8 @@ public class SearchProcessor {
 			}
 			if (!nestedAggregation.isEmpty()) {
 				for (Map.Entry<String, List<String>> mapData : nestedAggregation.entrySet()) {
-					AggregationBuilder nestedAggregationBuilder = AggregationBuilders.nested(mapData.getKey(), mapData.getKey());
+					AggregationBuilder nestedAggregationBuilder = AggregationBuilders.nested(mapData.getKey(),
+							mapData.getKey());
 					for (String nestedValue : mapData.getValue()) {
 						termBuilder = AggregationBuilders.terms(nestedValue)
 								.field(mapData.getKey() + "." + nestedValue + SearchConstants.RAW_FIELD_EXTENSION)
@@ -410,8 +456,9 @@ public class SearchProcessor {
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
 		formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
-		if(searchDTO.getMultiFilterProperties() != null) {
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
+		if (searchDTO.getMultiFilterProperties() != null) {
+			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery,
+					SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
 		}
 
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
@@ -428,15 +475,11 @@ public class SearchProcessor {
 		QueryBuilder queryBuilder = null;
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
-		if(!searchDTO.isFuzzySearch() || pass == 1)
-			formQuery(properties, queryBuilder, boolQuery, totalOperation, false);
-		else
-			formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
-		if(searchDTO.getMultiFilterProperties() != null && (!searchDTO.isFuzzySearch() || pass == 1)) {
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, false);
+		formQuery(properties, queryBuilder, boolQuery, totalOperation, pass==1? false : searchDTO.isFuzzySearch());
+		if (searchDTO.getMultiFilterProperties() != null) {
+			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery,
+					SearchConstants.SEARCH_OPERATION_OR, pass==1? false : searchDTO.isFuzzySearch());
 		}
-		else
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
 
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
 		if (null != softConstraints && !softConstraints.isEmpty()) {
@@ -446,7 +489,9 @@ public class SearchProcessor {
 		}
 		return boolQuery;
 	}
-	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
+
+	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery,
+						   String operation, boolean fuzzy) {
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -457,7 +502,6 @@ public class SearchProcessor {
 				values = Arrays.asList(property.get("values"));
 			}
 			values = values.stream().filter(value -> (null != value)).collect(Collectors.toList());
-
 
 			String propertyName = (String) property.get("propertyName");
 			if (propertyName.equals("*")) {
@@ -561,12 +605,12 @@ public class SearchProcessor {
 	}
 
 	private QueryBuilder checkNestedProperty(QueryBuilder queryBuilder, String propertyName) {
-		if(propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "").contains(".")) {
-			queryBuilder = QueryBuilders.nestedQuery(propertyName.split("\\.")[0], queryBuilder, org.apache.lucene.search.join.ScoreMode.None);
+		if (propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "").contains(".")) {
+			queryBuilder = QueryBuilders.nestedQuery(propertyName.split("\\.")[0], queryBuilder,
+					org.apache.lucene.search.join.ScoreMode.None);
 		}
 		return queryBuilder;
 	}
-
 
 	private QueryBuilder getAndQuery(String propertyName, List<Object> values) {
 		BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
@@ -599,7 +643,7 @@ public class SearchProcessor {
 	 * @param values
 	 * @return
 	 */
-	private QueryBuilder getAllFieldsPropertyQuery(List<Object> values, Boolean fuzzy) {
+	private QueryBuilder getAllFieldsPropertyQuery(List<Object> values, boolean fuzzy) {
 		List<String> queryFields = ElasticSearchUtil.getQuerySearchFields();
 		Map<String, Float> queryFieldsMap = new HashMap<>();
 		for (String field : queryFields) {
@@ -617,7 +661,8 @@ public class SearchProcessor {
 			} else {
 				queryBuilder
 						.should(QueryBuilders.multiMatchQuery(value).fields(queryFieldsMap)
-								.operator(Operator.AND).type(Type.CROSS_FIELDS).fuzzyTranspositions(false).lenient(true));
+								.operator(Operator.AND).type(Type.CROSS_FIELDS).fuzzyTranspositions(false)
+								.lenient(true));
 			}
 		}
 
@@ -633,15 +678,14 @@ public class SearchProcessor {
 		BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
 		for (String key : softConstraints.keySet()) {
 			List<Object> data = (List<Object>) softConstraints.get(key);
-			if(data.get(1) instanceof List) {
+			if (data.get(1) instanceof List) {
 				List<Object> dataList = (List<Object>) data.get(1);
-				for(Object value: dataList) {
+				for (Object value : dataList) {
 					queryBuilder
 							.should(QueryBuilders.matchQuery(key + SearchConstants.RAW_FIELD_EXTENSION, value)
 									.boost(Integer.valueOf((int) data.get(0)).floatValue()).fuzzyTranspositions(false));
 				}
-			}
-			else {
+			} else {
 				queryBuilder.should(
 						QueryBuilders.matchQuery(key + SearchConstants.RAW_FIELD_EXTENSION, data.get(1))
 								.boost(Integer.valueOf((int) data.get(0)).floatValue()).fuzzyTranspositions(false));
@@ -868,9 +912,9 @@ public class SearchProcessor {
 	}
 
 	private void setAggregations(SearchSourceBuilder searchSourceBuilder, List<Map<String, Object>> aggregations) {
-		if(CollectionUtils.isNotEmpty(aggregations)){
-			for(Map<String, Object> aggregate: aggregations){
-				TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String)aggregate.get("l1"))
+		if (CollectionUtils.isNotEmpty(aggregations)) {
+			for (Map<String, Object> aggregate : aggregations) {
+				TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String) aggregate.get("l1"))
 						.field(aggregate.get("l1") + SearchConstants.RAW_FIELD_EXTENSION)
 						.size(ElasticSearchUtil.defaultResultLimit);
 				int level = 2;
@@ -881,42 +925,45 @@ public class SearchProcessor {
 	}
 
 	private AggregationBuilder getNextLevelAggregation(Map<String, Object> aggregate, int level) {
-		TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String)aggregate.get("l" + level))
+		TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String) aggregate.get("l" + level))
 				.field(aggregate.get("l" + level) + SearchConstants.RAW_FIELD_EXTENSION)
 				.size(ElasticSearchUtil.defaultResultLimit);
 
-
-		if(level == aggregate.keySet().size()){
+		if (level == aggregate.keySet().size()) {
 			return termBuilder;
-		}else {
+		} else {
 			level += 1;
 			return termBuilder.subAggregation(getNextLevelAggregation(aggregate, level));
 		}
 	}
 
-	private List<Map<String,Object>> aggregateResult(Aggregations aggregations) {
+	private List<Map<String, Object>> aggregateResult(Aggregations aggregations) {
 		List<Map<String, Object>> aggregationList = new ArrayList<>();
-		if(null != aggregations){
+		if (null != aggregations) {
 			Map<String, Aggregation> aggregationMap = aggregations.getAsMap();
-			for(String key: aggregationMap.keySet()){
+			for (String key : aggregationMap.keySet()) {
 				Terms terms = (Terms) aggregationMap.get(key);
 				List<Terms.Bucket> buckets = (List<Terms.Bucket>) terms.getBuckets();
 				List<Map<String, Object>> values = new ArrayList<>();
-				if(CollectionUtils.isNotEmpty(buckets)) {
-					for(Terms.Bucket bucket: buckets) {
-						Map<String, Object> termBucket = new HashMap<String, Object>() {{
-							put("count", bucket.getDocCount());
-							put("name", bucket.getKey());
-							List<Map<String,Object>> subAggregations = aggregateResult(bucket.getAggregations());
-							if(CollectionUtils.isNotEmpty(subAggregations))
-								put("aggregations", subAggregations);
-						}};
+				if (CollectionUtils.isNotEmpty(buckets)) {
+					for (Terms.Bucket bucket : buckets) {
+						Map<String, Object> termBucket = new HashMap<String, Object>() {
+							{
+								put("count", bucket.getDocCount());
+								put("name", bucket.getKey());
+								List<Map<String, Object>> subAggregations = aggregateResult(bucket.getAggregations());
+								if (CollectionUtils.isNotEmpty(subAggregations))
+									put("aggregations", subAggregations);
+							}
+						};
 						values.add(termBucket);
 					}
-					aggregationList.add(new HashMap<String, Object>(){{
-						put("values", values);
-						put("name", key);
-					}});
+					aggregationList.add(new HashMap<String, Object>() {
+						{
+							put("values", values);
+							put("name", key);
+						}
+					});
 				}
 			}
 
@@ -960,14 +1007,12 @@ public class SearchProcessor {
 		}
 	}
 
-
 	private QueryBuilder getQuery(SearchDTO searchDTO) {
 		return prepareSearchQuery(searchDTO);
 	}
 
 	private QueryBuilder getQuery(SearchDTO searchDTO, int pass) {
-		return prepareSearchQuery(searchDTO,pass);
+		return prepareSearchQuery(searchDTO, pass);
 	}
-
 
 }
