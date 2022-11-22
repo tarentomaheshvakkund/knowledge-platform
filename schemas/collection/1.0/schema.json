@@ -1299,6 +1299,14 @@
       "items": {
         "type": "object"
       }
+    },
+    "sumOfTotalTatings": {
+      "type": "number",
+      "default": 0
+    },
+    "totalNumberOfRatings": {
+      "type": "number",
+      "default": 0
     }
   }
 }
