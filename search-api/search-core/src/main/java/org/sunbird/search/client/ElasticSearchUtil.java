@@ -726,18 +726,6 @@ public class ElasticSearchUtil {
 		}
 		return doc;
 	}
-	public static boolean checkMatchExist(String indexName, SearchSourceBuilder searchSourceBuilder) throws IOException {
-		SearchResponse response = getClient(indexName)
-				.search(new SearchRequest().indices(indexName).source(searchSourceBuilder));
 
-		try{
-			SearchHit hitAt0 = response.getHits().getAt(0);
-			return true;
-		}
-		catch (ArrayIndexOutOfBoundsException e){
-			return false;
-		}
-
-	}
 
 }
