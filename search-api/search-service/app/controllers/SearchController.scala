@@ -41,7 +41,7 @@ class SearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchActor: Ac
         val internalReq = getRequest(ApiId.APPLICATION_PRIVATE_SEARCH)
         setHeaderContext(internalReq)
         val channel = internalReq.getContext.getOrDefault("CHANNEL_ID", "").asInstanceOf[String]
-        if(channel.isEmpty) {
+        if(channel.isBlank) {
             getErrorResponse(ApiId.APPLICATION_PRIVATE_SEARCH, apiVersion, SearchConstants.ERR_INVALID_CHANNEL, "Please provide channel!")
         } else {
             val filters = internalReq.getRequest.getOrDefault(SearchConstants.filters,"").asInstanceOf[java.util.Map[String, Object]]
