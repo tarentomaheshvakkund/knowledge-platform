@@ -52,21 +52,19 @@ public class SearchProcessor {
 			throws Exception {
 		List<Map<String, Object>> groupByFinalList = new ArrayList<Map<String, Object>>();
 		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, true);
-		Future<SearchResponse> searchResponse = null;
-		boolean enableFuzzyWhenNoResults = Platform.config.hasPath("search.fields.enable.fuzzy.when.noresult") &&
-			Platform.config.getBoolean("search.fields.enable.fuzzy.when.noresult");
-		if (enableFuzzyWhenNoResults) {
-			//Let's call with Default fuzzy value given in request
-			int exactMatchCount = ElasticSearchUtil.count(SearchConstants.COMPOSITE_SEARCH_INDEX, query);
+		Future<SearchResponse> searchResponse = ElasticSearchUtil.search(SearchConstants.COMPOSITE_SEARCH_INDEX, query);;
 
-			//If no results and fuzzy was false then set fuzzy to true
-			//If no results when fuzzy was true, return the same.
-			if (exactMatchCount == 0 && !searchDTO.isFuzzySearch()) {
-				searchDTO.setFuzzySearch(true);
-				query = processSearchQuery(searchDTO, groupByFinalList, true);
-			}
+		// Get count of exact matches (fuzzy=false in request)
+		int exactMatchCount = ElasticSearchUtil.count(SearchConstants.COMPOSITE_SEARCH_INDEX, query);
+
+		// If no exact match, repeat search with fuzzy=true in request
+		if (exactMatchCount == 0 && !searchDTO.isFuzzySearch()) {
+			searchDTO.setFuzzySearch(true);
+			query = processSearchQuery(searchDTO, groupByFinalList, true);
+			searchResponse = ElasticSearchUtil.search(SearchConstants.COMPOSITE_SEARCH_INDEX, query);
 		}
-		searchResponse = ElasticSearchUtil.search(SearchConstants.COMPOSITE_SEARCH_INDEX, query);
+
+
 
 		return searchResponse.map(new Mapper<SearchResponse, Map<String, Object>>() {
 			public Map<String, Object> apply(SearchResponse searchResult) {
