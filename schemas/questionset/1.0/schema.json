@@ -715,6 +715,10 @@
     "retakeAssessmentDuration": {
       "type": "number",
       "default": 5
+    },
+    "maxAssessmentRetakeAttempts": {
+      "type": "number",
+      "default": 5
     }
   },
   "additionalProperties": false
