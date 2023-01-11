@@ -9,6 +9,6 @@ USER sunbird
 COPY ./content-api/content-service/target/content-service-1.0-SNAPSHOT-dist.zip /home/sunbird/
 RUN unzip /home/sunbird/content-service-1.0-SNAPSHOT-dist.zip -d /home/sunbird/
 RUN rm /home/sunbird/content-service-1.0-SNAPSHOT-dist.zip
-COPY --chown=sunbird ./schema /home/sunbird/content-service-1.0-SNAPSHOT/schemas
+COPY --chown=sunbird ./schema/schemas /home/sunbird/content-service-1.0-SNAPSHOT/schemas
 WORKDIR /home/sunbird/
 CMD java -XX:+PrintFlagsFinal $JAVA_OPTIONS -cp '/home/sunbird/content-service-1.0-SNAPSHOT/lib/*' -Dconfig.file=/home/sunbird/content-service-1.0-SNAPSHOT/config/application.conf -Dlogger.file=/home/sunbird/content-service-1.0-SNAPSHOT/config/logback.xml play.core.server.ProdServerStart /home/sunbird/content-service-1.0-SNAPSHOT
