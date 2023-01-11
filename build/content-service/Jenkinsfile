@@ -31,7 +31,7 @@ node('build-slave') {
                 stage('schema-pull') {
 
                 dir("${env.WORKSPACE}/schema") {
-                checkout scm: [$class: 'GitSCM', branches: [[name: assets_repo_branch]], extensions: [[$class: 'CloneOption', depth: 1, noTags: true, reference: '', shallow: true]], userRemoteConfigs: [[credentialsId: schema_repo_credentials, url: schema_repo_url]]]
+                checkout scm: [$class: 'GitSCM', branches: [[name: schema_repo_branch]], extensions: [[$class: 'CloneOption', depth: 1, noTags: true, reference: '', shallow: true]], userRemoteConfigs: [[credentialsId: schema_repo_credentials, url: schema_repo_url]]]
                
                 }
                 }
