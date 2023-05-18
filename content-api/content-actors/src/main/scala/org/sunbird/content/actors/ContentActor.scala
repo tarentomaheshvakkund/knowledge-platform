@@ -5,7 +5,9 @@ import java.util.concurrent.CompletionException
 import java.io.File
 import org.apache.commons.io.FilenameUtils
 import javax.inject.Inject
+import org.apache.commons.lang3.ObjectUtils
 import org.apache.commons.lang3.StringUtils
+import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
@@ -74,17 +76,32 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
 			metadata.put("identifier", node.getIdentifier.replace(".img", ""))
 			val response: Response = ResponseHandler.OK
-      if (responseSchemaName.isEmpty) {
-        response.put("content", metadata)
-      }
-      else {
-        response.put(responseSchemaName, metadata)
-      }
-			if(!StringUtils.equalsIgnoreCase(metadata.get("visibility").asInstanceOf[String],"Private")) {
-				response
+			if (responseSchemaName.isEmpty) {
+				response.put("content", metadata)
 			}
 			else {
+				response.put(responseSchemaName, metadata)
+			}
+			if (StringUtils.equalsIgnoreCase(metadata.get("visibility").asInstanceOf[String],"Private")) {
 				throw new ClientException("ERR_ACCESS_DENIED", "content visibility is private, hence access denied")
+			}
+			var sa = metadata.get("secureSettings")
+			var securityAttribute : util.Map[String, AnyRef] = metadata.getOrDefault("secureSettings", new util.HashMap[String, AnyRef]).asInstanceOf[util.Map[String, AnyRef]]
+			if (MapUtils.isNotEmpty(securityAttribute)) {
+				var orgList : util.ArrayList[String] = securityAttribute.getOrDefault("organisation", new util.ArrayList[String]).asInstanceOf[util.ArrayList[String]]
+				if (!CollectionUtils.isEmpty(orgList)) {
+					//Content should be read by unique org users only.
+					var userChannelId : String = request.getRequest.getOrDefault("x-user-channel-id", "").asInstanceOf[String]
+					if (orgList.contains(userChannelId)) {
+						response
+					} else {
+						throw new ClientException("ERR_ACCESS_DENIED", "User is not allowed to read this content.")
+					}
+				} else {
+					response
+				}
+			} else {
+				response
 			}
 		})
 	}
