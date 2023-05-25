@@ -172,6 +172,9 @@ public class BaseQueryGenerationUtil {
 			if (StringUtils.isBlank(node.getIdentifier()))
 				node.setIdentifier(Identifier.getIdentifier(node.getGraphId(), Identifier.getUniqueIdFromTimestamp()));
 
+			if (node.getMetadata().containsKey("secureSettings")) {
+				node.setIdentifier(node.getIdentifier() + "_rc");
+			}
 			// Adding 'IL_UNIQUE_ID' Property
 			query.append(
 					SystemProperties.IL_UNIQUE_ID.name() + ":  { SP_" + SystemProperties.IL_UNIQUE_ID.name() + " }, ");
