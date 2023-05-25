@@ -132,7 +132,9 @@ object HierarchyManager {
             }
             val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
             var metadata: util.Map[String, AnyRef] = NodeUtil.serialize(rootNode, new util.ArrayList[String](), request.getContext.get("schemaName").asInstanceOf[String], request.getContext.get("version").asInstanceOf[String])
-
+            if (!validateContentSecurity(request, metadata)) {
+                Future(ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId")))
+            }
             fetchRelationalMetadata(request, rootNode.getIdentifier).map(collRelationalMetadata => {
                 val hierarchy = fetchHierarchy(request, rootNode.getIdentifier)
 
@@ -211,7 +213,9 @@ object HierarchyManager {
             if (!result.isEmpty) {
                 val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
                 val rootHierarchy  = result.get("content").asInstanceOf[util.Map[String, AnyRef]]
-                if (StringUtils.isEmpty(bookmarkId)) {
+                if (validateContentSecurity(request, rootHierarchy)) {
+                    ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId"))
+                } else if (StringUtils.isEmpty(bookmarkId)) {
                     ResponseHandler.OK.put("content", rootHierarchy)
                 } else {
                     val children = rootHierarchy.getOrElse("children", new util.ArrayList[util.Map[String, AnyRef]]()).asInstanceOf[util.List[util.Map[String, AnyRef]]]
@@ -712,5 +716,28 @@ object HierarchyManager {
         val configObjTypes: List[String] = outRelations.find(_.keySet.contains("children")).orNull.getOrElse("children", Map()).asInstanceOf[java.util.Map[String, AnyRef]].getOrElse("objects", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]].toList
         if(configObjTypes.nonEmpty && !configObjTypes.contains(childNode.getOrDefault("objectType", "").asInstanceOf[String]))
             throw new ClientException("ERR_INVALID_CHILDREN", "Invalid Children objectType "+childNode.get("objectType")+" found for : "+childNode.get("identifier") + "| Please provide children having one of the objectType from "+ configObjTypes.asJava)
+    }
+
+    def validateContentSecurity(request: Request, metadata: util.Map[String, AnyRef])(implicit ec: ExecutionContext): Boolean = {
+        var securityAttribute : util.Map[String, AnyRef] = metadata.getOrDefault("secureSettings", new util.HashMap[String, AnyRef]).asInstanceOf[util.Map[String, AnyRef]]
+        var isUserAllowedToRead = true
+        if (MapUtils.isNotEmpty(securityAttribute)) {
+            var orgList : util.ArrayList[String] = securityAttribute.getOrDefault("organisation", new util.ArrayList[String]).asInstanceOf[util.ArrayList[String]]
+            if (!CollectionUtils.isEmpty(orgList)) {
+                //Content should be read by unique org users only.
+                var userChannelId : String = request.getRequest.getOrDefault("x-user-channel-id", "").asInstanceOf[String]
+                if (!orgList.contains(userChannelId)) {
+                    System.out.println("Org List doesn't have orgId received from request...")
+                    isUserAllowedToRead = false
+                } else {
+                    System.out.println("OrgList contains user given orgId")
+                }
+            } else {
+                System.out.println("Org List is empty...")
+            }
+        } else {
+            System.out.println("SecureSettings is not available...")
+        }
+        isUserAllowedToRead
     }
 }
