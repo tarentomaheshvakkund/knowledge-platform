@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder.Type;
@@ -342,6 +343,9 @@ public class SearchProcessor {
 	}
 
 	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
+		boolean enableSecureSettings = Platform.config.hasPath("search.fields.enable.secureSettings") &&
+				Platform.config.getBoolean("search.fields.enable.secureSettings");
+
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -359,6 +363,8 @@ public class SearchProcessor {
 				relevanceSort = true;
 				propertyName = "all_fields";
 				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
+				if(!enableSecureSettings)
+				boolQuery.mustNot(getSecureSettingsQuery());
 				boolQuery.must(queryBuilder);
 				continue;
 			}
@@ -447,6 +453,8 @@ public class SearchProcessor {
 			}
 			}
 			if (operation.equalsIgnoreCase(AND)) {
+				if(!enableSecureSettings)
+					boolQuery.mustNot(getSecureSettingsQuery());
 				boolQuery.must(queryBuilder);
 			} else {
 				boolQuery.should(queryBuilder);
@@ -515,8 +523,17 @@ public class SearchProcessor {
 								.operator(Operator.AND).type(Type.CROSS_FIELDS).fuzzyTranspositions(false).lenient(true));
 			}
 		}
-
 		return queryBuilder;
+	}
+	private QueryBuilder getSecureSettingsQuery() {
+
+		QueryBuilder firstNestedQuery =new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery() .mustNot(new ExistsQueryBuilder("organisation")), org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder secondNestedQuery= new NestedQueryBuilder("secureSettings", QueryBuilders.boolQuery()
+				            .filter(new RangeQueryBuilder("organisation" + ".length").lte(0)) , org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder query = QueryBuilders.boolQuery() .should(firstNestedQuery).should (secondNestedQuery);
+
+		return query;
 	}
 
 	/**
