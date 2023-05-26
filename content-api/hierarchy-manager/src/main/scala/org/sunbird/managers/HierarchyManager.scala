@@ -213,7 +213,7 @@ object HierarchyManager {
             if (!result.isEmpty) {
                 val bookmarkId = request.get("bookmarkId").asInstanceOf[String]
                 val rootHierarchy  = result.get("content").asInstanceOf[util.Map[String, AnyRef]]
-                if (validateContentSecurity(request, rootHierarchy)) {
+                if (!validateContentSecurity(request, rootHierarchy)) {
                     ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId"))
                 } else if (StringUtils.isEmpty(bookmarkId)) {
                     ResponseHandler.OK.put("content", rootHierarchy)
@@ -727,16 +727,9 @@ object HierarchyManager {
                 //Content should be read by unique org users only.
                 var userChannelId : String = request.getRequest.getOrDefault("x-user-channel-id", "").asInstanceOf[String]
                 if (!orgList.contains(userChannelId)) {
-                    System.out.println("Org List doesn't have orgId received from request...")
                     isUserAllowedToRead = false
-                } else {
-                    System.out.println("OrgList contains user given orgId")
                 }
-            } else {
-                System.out.println("Org List is empty...")
             }
-        } else {
-            System.out.println("SecureSettings is not available...")
         }
         isUserAllowedToRead
     }
