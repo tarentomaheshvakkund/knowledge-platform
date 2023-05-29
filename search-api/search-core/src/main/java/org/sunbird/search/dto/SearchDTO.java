@@ -16,6 +16,7 @@ public class SearchDTO {
     private int limit;
     private int offset;
     boolean fuzzySearch = false;
+    boolean secureSettings = false;
     private Map<String, Object> additionalProperties = new HashMap<String, Object>();
     private Map<String, Object> softConstraints = new HashMap<String, Object>();
     private List<Map<String, Object>> aggregations = new ArrayList<>();
@@ -71,6 +72,12 @@ public class SearchDTO {
     }
     public void setFuzzySearch(boolean fuzzySearch) {
         this.fuzzySearch = fuzzySearch;
+    }
+    public boolean isSecureSettings() {
+        return secureSettings;
+    }
+    public void setSecureSettings(boolean secureSettings) {
+        this.secureSettings = secureSettings;
     }
     public Map<String, Object> getAdditionalProperties() {
         return additionalProperties;
