@@ -25,7 +25,7 @@ abstract class SearchBaseController(protected val cc: ControllerComponents)(impl
     }
 
     def commonHeaders()(implicit request: Request[AnyContent]): java.util.Map[String, Object] = {
-        val customHeaders = Map("x-channel-id" -> "CHANNEL_ID", "x-consumer-id" -> "CONSUMER_ID", "x-app-id" -> "APP_ID", "x-session-id" -> "SESSION_ID", "x-device-id" -> "DEVICE_ID")
+        val customHeaders = Map("x-authenticated-user-channel-id" -> "x-user-channel-id","x-channel-id" -> "CHANNEL_ID", "x-consumer-id" -> "CONSUMER_ID", "x-app-id" -> "APP_ID", "x-session-id" -> "SESSION_ID", "x-device-id" -> "DEVICE_ID")
         val headers = request.headers.headers.groupBy(_._1).mapValues(_.map(_._2))
         val appHeaders = headers.filter(header => customHeaders.keySet.contains(header._1.toLowerCase))
                 .map(entry => (customHeaders.get(entry._1.toLowerCase()).get, entry._2.head))
