@@ -215,15 +215,21 @@ object HierarchyManager {
                 val rootHierarchy  = result.get("content").asInstanceOf[util.Map[String, AnyRef]]
                 if (!validateContentSecurity(request, rootHierarchy)) {
                     ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId"))
-                } else if (StringUtils.isEmpty(bookmarkId)) {
-                    ResponseHandler.OK.put("content", rootHierarchy)
                 } else {
-                    val children = rootHierarchy.getOrElse("children", new util.ArrayList[util.Map[String, AnyRef]]()).asInstanceOf[util.List[util.Map[String, AnyRef]]]
-                    val bookmarkHierarchy = filterBookmarkHierarchy(children, bookmarkId)
-                    if (MapUtils.isEmpty(bookmarkHierarchy)) {
-                        ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "bookmarkId " + bookmarkId + " does not exist")
+                    if (isSecureContent(rootHierarchy)) {
+                        rootHierarchy.put("csJwtToken", request.get("rootId"))
+                    }
+                    
+                    if (StringUtils.isEmpty(bookmarkId)) {
+                        ResponseHandler.OK.put("content", rootHierarchy)
                     } else {
-                        ResponseHandler.OK.put("content", bookmarkHierarchy)
+                        val children = rootHierarchy.getOrElse("children", new util.ArrayList[util.Map[String, AnyRef]]()).asInstanceOf[util.List[util.Map[String, AnyRef]]]
+                        val bookmarkHierarchy = filterBookmarkHierarchy(children, bookmarkId)
+                        if (MapUtils.isEmpty(bookmarkHierarchy)) {
+                            ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "bookmarkId " + bookmarkId + " does not exist")
+                        } else {
+                            ResponseHandler.OK.put("content", bookmarkHierarchy)
+                        }
                     }
                 }
             } else
@@ -716,6 +722,18 @@ object HierarchyManager {
         val configObjTypes: List[String] = outRelations.find(_.keySet.contains("children")).orNull.getOrElse("children", Map()).asInstanceOf[java.util.Map[String, AnyRef]].getOrElse("objects", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]].toList
         if(configObjTypes.nonEmpty && !configObjTypes.contains(childNode.getOrDefault("objectType", "").asInstanceOf[String]))
             throw new ClientException("ERR_INVALID_CHILDREN", "Invalid Children objectType "+childNode.get("objectType")+" found for : "+childNode.get("identifier") + "| Please provide children having one of the objectType from "+ configObjTypes.asJava)
+    }
+
+    def isSecureContent (metadata: util.Map[String, AnyRef])(implicit ec: ExecutionContext): Boolean = {
+        var securityAttribute : util.Map[String, AnyRef] = metadata.getOrDefault("secureSettings", new util.HashMap[String, AnyRef]).asInstanceOf[util.Map[String, AnyRef]]
+        var isSecureContent = false
+        if (MapUtils.isNotEmpty(securityAttribute)) {
+            var orgList : util.ArrayList[String] = securityAttribute.getOrDefault("organisation", new util.ArrayList[String]).asInstanceOf[util.ArrayList[String]]
+            if (!CollectionUtils.isEmpty(orgList)) {
+                isSecureContent = true
+            }
+        }
+        isSecureContent
     }
 
     def validateContentSecurity(request: Request, metadata: util.Map[String, AnyRef])(implicit ec: ExecutionContext): Boolean = {
