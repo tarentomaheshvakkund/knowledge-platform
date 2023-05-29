@@ -78,8 +78,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val response: Response = ResponseHandler.OK
 			if (responseSchemaName.isEmpty) {
 				response.put("content", metadata)
-			}
-			else {
+			} else {
 				response.put(responseSchemaName, metadata)
 			}
 			if (StringUtils.equalsIgnoreCase(metadata.get("visibility").asInstanceOf[String],"Private")) {
