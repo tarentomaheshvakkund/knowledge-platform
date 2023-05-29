@@ -217,7 +217,7 @@ object HierarchyManager {
                     ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId"))
                 } else {
                     if (isSecureContent(rootHierarchy)) {
-                        rootHierarchy.put("csJwtToken", request.get("rootId"))
+                        rootHierarchy.put("cstoken", request.get("rootId"))
                     }
                     
                     if (StringUtils.isEmpty(bookmarkId)) {
