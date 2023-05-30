@@ -331,12 +331,12 @@ public class SearchProcessor {
 		if (searchDTO.isSecureSettings() == false)
 			formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
 		else
-			formQueryUpdated(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+			formQueryImpl(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
 		if (searchDTO.getMultiFilterProperties() != null) {
 			if (searchDTO.isSecureSettings() == false)
 				formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
 			else {
-				formQueryUpdated(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+				formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
 			}
 		}
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
@@ -349,10 +349,10 @@ public class SearchProcessor {
 	}
 
 	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
-		formQueryUpdated(properties, queryBuilder, boolQuery, operation, fuzzy, null);
+		formQueryImpl(properties, queryBuilder, boolQuery, operation, fuzzy, null);
 	}
 
-	private void formQueryUpdated(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy, SearchDTO searchDTO) {
+	private void formQueryImpl(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy, SearchDTO searchDTO) {
 		boolean enableSecureSettings = false;
 		if (searchDTO != null)
 			enableSecureSettings = searchDTO.isSecureSettings();
