@@ -1,6 +1,7 @@
 package org.sunbird.auth.verifier;
 
 import org.sunbird.common.JsonUtils;
+import org.sunbird.common.Platform;
 import org.sunbird.telemetry.logger.TelemetryManager;
 
 import java.util.HashMap;
@@ -8,6 +9,9 @@ import java.util.Map;
 
 public class JWTUtil {
     private static String SEPARATOR = ".";
+
+    public static String JWT_SECRET_STRING = Platform.config.hasPath("content.security.jwt.secret") ? 
+        Platform.config.getString("content.security.jwt.secret"): "sunbird";
 
     public static String createRS256Token(Map<String, Object> claimsMap) {
         String token = "";
@@ -22,6 +26,20 @@ public class JWTUtil {
             } else {
                 TelemetryManager.error("JWTUtil.createRS256Token :: KeyManager is not initialized properly.");
             }
+        } catch (Exception e) {
+            TelemetryManager.error("JWTUtil.createRS256Token :: Failed to create RS256 token. Exception: ", e);
+        }
+        return token;
+    }
+
+    public static String createRS256Token(Map<String, Object> claimsMap, boolean useSecret) {
+        String token = "";
+        JWTokenType tokenType = JWTokenType.RS256;
+        try {
+            Map<String, String> headerOptions = new HashMap<String, String>();
+            String payLoad = createHeader(tokenType, headerOptions) + SEPARATOR + createClaimsMap(claimsMap);
+            String signature = encodeToBase64Uri(CryptoUtil.generateRSASign(payLoad, KeyManager.loadPrivateKey(JWT_SECRET_STRING), tokenType.getAlgorithmName()));
+            token = payLoad + SEPARATOR + signature;
         } catch (Exception e) {
             TelemetryManager.error("JWTUtil.createRS256Token :: Failed to create RS256 token. Exception: ", e);
         }

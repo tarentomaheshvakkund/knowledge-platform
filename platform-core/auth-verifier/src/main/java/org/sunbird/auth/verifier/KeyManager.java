@@ -80,13 +80,13 @@ public class KeyManager {
         return kf.generatePublic(X509publicKey);
     }
 
-    private static PrivateKey loadPrivateKey(String key) throws Exception {
+    public static PrivateKey loadPrivateKey(String key) throws Exception {
         String privateKey = new String(key.getBytes(), StandardCharsets.UTF_8);
         privateKey = privateKey.replaceAll("(-+BEGIN RSA PRIVATE KEY-+)",                                       "");
         privateKey = privateKey.replaceAll("(-+END RSA PRIVATE KEY-+)", "");
         privateKey = privateKey.replaceAll("(-+BEGIN PRIVATE KEY-+)", "");
         privateKey = privateKey.replaceAll("(-+END PRIVATE KEY-+)", "");
-        publicKey = publicKey.replaceAll("[\\r\\n]+", "");
+        privateKey = privateKey.replaceAll("[\\r\\n]+", "");
         byte[] keyBytes = Base64Util.decode(privateKey.getBytes("UTF-8"), Base64Util.DEFAULT);
 
         // generate private key
