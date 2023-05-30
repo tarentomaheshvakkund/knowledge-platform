@@ -758,7 +758,7 @@ object HierarchyManager {
         var csToken = "";
         var claimsMap : util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]
         claimsMap.put("contentIdentifier", children)
-        csToken = JWTUtil.createRS256Token(claimsMap, true)
+        csToken = JWTUtil.createHS256Token(claimsMap)
         csToken
     }
 }
