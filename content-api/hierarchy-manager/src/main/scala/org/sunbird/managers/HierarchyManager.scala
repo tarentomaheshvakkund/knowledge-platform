@@ -4,6 +4,7 @@ import java.util
 import java.util.concurrent.CompletionException
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.commons.lang3.StringUtils
+import org.sunbird.auth.verifier.JWTUtil
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.dto.{Request, Response, ResponseHandler, ResponseParams}
 import org.sunbird.common.exception.{ClientException, ErrorCodes, ResourceNotFoundException, ResponseCode, ServerException}
@@ -217,9 +218,10 @@ object HierarchyManager {
                     ResponseHandler.ERROR(ResponseCode.RESOURCE_NOT_FOUND, ResponseCode.RESOURCE_NOT_FOUND.name(), "User can't read content with Id: " + request.get("rootId"))
                 } else {
                     if (isSecureContent(rootHierarchy)) {
-                        rootHierarchy.put("cstoken", request.get("rootId"))
+                        val csToken = generateCSToken(rootHierarchy.get("childNodes").asInstanceOf[util.List[String]])
+                        rootHierarchy.put("cstoken", csToken)
                     }
-                    
+
                     if (StringUtils.isEmpty(bookmarkId)) {
                         ResponseHandler.OK.put("content", rootHierarchy)
                     } else {
@@ -750,5 +752,13 @@ object HierarchyManager {
             }
         }
         isUserAllowedToRead
+    }
+
+    def generateCSToken(children: util.List[String])(implicit ec: ExecutionContext): String = {
+        var csToken = "";
+        var claimsMap : util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]
+        claimsMap.put("contentIdentifier", children)
+        csToken = JWTUtil.createRS256Token(claimsMap)
+        csToken
     }
 }

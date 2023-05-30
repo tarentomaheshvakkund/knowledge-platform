@@ -14,6 +14,7 @@
         <module>platform-common</module>
         <module>platform-telemetry</module>
         <module>actor-core</module>
+        <module>auth-verifier</module>
         <module>schema-validator</module>
         <module>platform-cache</module>
         <module>cassandra-connector</module>
