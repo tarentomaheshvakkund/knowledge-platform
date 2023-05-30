@@ -353,9 +353,9 @@ public class SearchProcessor {
 	}
 
 	private void formQueryUpdated(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy, SearchDTO searchDTO) {
-		boolean enableSecureSettings = Platform.config.hasPath("search.fields.enable.secureSettings") &&
-				Platform.config.getBoolean("search.fields.enable.secureSettings");
-
+		boolean enableSecureSettings = false;
+		if (searchDTO != null)
+			enableSecureSettings = searchDTO.isSecureSettings();
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -374,11 +374,9 @@ public class SearchProcessor {
 				propertyName = "all_fields";
 				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
 				if (enableSecureSettings) {
-					if (searchDTO.isSecureSettings()) {
-						boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
-					} else {
-						boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
-					}
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
 				}
 				boolQuery.must(queryBuilder);
 				continue;
@@ -469,11 +467,9 @@ public class SearchProcessor {
 			}
 			if (operation.equalsIgnoreCase(AND)) {
 				if (enableSecureSettings) {
-					if (searchDTO.isSecureSettings()) {
-						boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
-					} else {
-						boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
-					}
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
 				}
 				boolQuery.must(queryBuilder);
 			} else {
