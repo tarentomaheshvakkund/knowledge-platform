@@ -363,9 +363,13 @@ public class SearchProcessor {
 				relevanceSort = true;
 				propertyName = "all_fields";
 				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
-				if(!enableSecureSettings)
-				boolQuery.mustNot(getSecureSettingsQuery());
-				boolQuery.must(queryBuilder);
+				if (!enableSecureSettings) {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+					boolQuery.must(queryBuilder);
+				} else {
+					boolQuery.must(getSecureSettingsSearchQuery("0134149030919618561"));
+					boolQuery.must(queryBuilder);
+				}
 				continue;
 			}
 
@@ -453,9 +457,13 @@ public class SearchProcessor {
 			}
 			}
 			if (operation.equalsIgnoreCase(AND)) {
-				if(!enableSecureSettings)
-					boolQuery.mustNot(getSecureSettingsQuery());
-				boolQuery.must(queryBuilder);
+				if (!enableSecureSettings) {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+					boolQuery.must(queryBuilder);
+				} else {
+					boolQuery.must(getSecureSettingsSearchQuery("0134149030919618561"));
+					boolQuery.must(queryBuilder);
+				}
 			} else {
 				boolQuery.should(queryBuilder);
 			}
@@ -525,13 +533,20 @@ public class SearchProcessor {
 		}
 		return queryBuilder;
 	}
-	private QueryBuilder getSecureSettingsQuery() {
+	private QueryBuilder getSecureSettingsSearchDefaultQuery() {
 
 		QueryBuilder firstNestedQuery =new NestedQueryBuilder("secureSettings",
 				QueryBuilders.boolQuery() .mustNot(new ExistsQueryBuilder("organisation")), org.apache.lucene.search.join.ScoreMode.None);
 		QueryBuilder secondNestedQuery= new NestedQueryBuilder("secureSettings", QueryBuilders.boolQuery()
-				            .filter(new RangeQueryBuilder("organisation" + ".length").lte(0)) , org.apache.lucene.search.join.ScoreMode.None);
+				.filter(new RangeQueryBuilder("organisation" + ".length").lte(0)) , org.apache.lucene.search.join.ScoreMode.None);
 		QueryBuilder query = QueryBuilders.boolQuery() .should(firstNestedQuery).should (secondNestedQuery);
+
+		return query;
+	}
+	private QueryBuilder getSecureSettingsSearchQuery(String org_id) {
+
+		QueryBuilder query =new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery() .must(new ExistsQueryBuilder("secureSettings.organisation")).must(QueryBuilders.termQuery("secureSettings.organisation",org_id)), org.apache.lucene.search.join.ScoreMode.None);
 
 		return query;
 	}
