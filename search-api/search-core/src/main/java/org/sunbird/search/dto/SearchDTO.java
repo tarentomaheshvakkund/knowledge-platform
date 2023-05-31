@@ -21,7 +21,8 @@ public class SearchDTO {
     private List<Map<String, Object>> aggregations = new ArrayList<>();
     private List<Map> implicitFilterProperties;
     private List<Map> multiFilterProperties;
-
+    private String userOrgId = "";
+    private boolean secureSettings = false;
 
     public SearchDTO() {
         super();
@@ -128,4 +129,15 @@ public class SearchDTO {
     public void setMultiFilterProperties(List<Map> multiFilterProperties) {
         this.multiFilterProperties = multiFilterProperties;
     }
+
+    public void setSecureSettings(boolean secureSettings) {
+        this.secureSettings = secureSettings;
+    }
+
+    public boolean isSecureSettings() {
+        return secureSettings;
+    }
+
+    public String getUserOrgId() {return userOrgId;}
+    public void setUserOrgId(String userOrgId) {this.userOrgId = userOrgId;}
 }

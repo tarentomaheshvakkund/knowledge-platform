@@ -327,9 +327,17 @@ public class SearchProcessor {
 		QueryBuilder queryBuilder = null;
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
-		formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
-		if(searchDTO.getMultiFilterProperties() != null) {
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
+		if (searchDTO.isSecureSettings() == false) {
+			formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
+		} else {
+			formQueryImpl(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+		}
+		if (searchDTO.getMultiFilterProperties() != null) {
+			if (searchDTO.isSecureSettings() == false)
+				formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
+			else {
+				formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+			}
 		}
 
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
@@ -342,6 +350,14 @@ public class SearchProcessor {
 	}
 
 	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
+		formQueryImpl(properties, queryBuilder, boolQuery, operation, fuzzy, null);
+	}
+
+	private void formQueryImpl(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy, SearchDTO searchDTO) {
+		boolean enableSecureSettings = false;
+		if (searchDTO != null) {
+			enableSecureSettings = searchDTO.isSecureSettings();
+		}
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -359,7 +375,11 @@ public class SearchProcessor {
 				relevanceSort = true;
 				propertyName = "all_fields";
 				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
-				boolQuery.must(queryBuilder);
+				if (enableSecureSettings) {
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+				}
 				continue;
 			}
 
@@ -447,6 +467,11 @@ public class SearchProcessor {
 			}
 			}
 			if (operation.equalsIgnoreCase(AND)) {
+				if (enableSecureSettings) {
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+				}
 				boolQuery.must(queryBuilder);
 			} else {
 				boolQuery.should(queryBuilder);
@@ -841,5 +866,19 @@ public class SearchProcessor {
 		return prepareSearchQuery(searchDTO);
 	}
 
+	private QueryBuilder getSecureSettingsSearchQuery(String org_id) {
+		QueryBuilder query = new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery().must(new ExistsQueryBuilder("secureSettings.organisation")).must(QueryBuilders.termQuery("secureSettings.organisation", org_id)), org.apache.lucene.search.join.ScoreMode.None);
+		return query;
+	}
 
+	private QueryBuilder getSecureSettingsSearchDefaultQuery() {
+		QueryBuilder firstNestedQuery =new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery() .mustNot(new ExistsQueryBuilder("organisation")), org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder secondNestedQuery= new NestedQueryBuilder("secureSettings", QueryBuilders.boolQuery()
+				            .filter(new RangeQueryBuilder("organisation" + ".length").lte(0)) , org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder query = QueryBuilders.boolQuery() .should(firstNestedQuery).should (secondNestedQuery);
+
+		return query;
+	}
 }
