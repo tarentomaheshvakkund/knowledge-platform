@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder.Type;
@@ -43,7 +44,7 @@ public class SearchProcessor {
 		ElasticSearchUtil.initialiseESClient(SearchConstants.COMPOSITE_SEARCH_INDEX,
 				Platform.config.getString("search.es_conn_info"));
 	}
-	
+
 	public SearchProcessor(String indexName) {
 	}
 
@@ -112,7 +113,7 @@ public class SearchProcessor {
 	/**
 	 * Returns the list of words which are synonyms of the synsetIds passed in the
 	 * request
-	 * 
+	 *
 	 * @param synsetIds
 	 * @return
 	 * @throws Exception
@@ -177,7 +178,7 @@ public class SearchProcessor {
 
 	/**
 	 * Returns list of synsetsIds which has valid documents in composite index
-	 * 
+	 *
 	 * @param synsetIds
 	 * @return
 	 * @throws Exception
@@ -327,11 +328,17 @@ public class SearchProcessor {
 		QueryBuilder queryBuilder = null;
 		String totalOperation = searchDTO.getOperation();
 		List<Map> properties = searchDTO.getProperties();
-		formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
-		if(searchDTO.getMultiFilterProperties() != null) {
-			formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
+		if (searchDTO.isSecureSettings() == false)
+			formQuery(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch());
+		else
+			formQueryImpl(properties, queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+		if (searchDTO.getMultiFilterProperties() != null) {
+			if (searchDTO.isSecureSettings() == false)
+				formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
+			else {
+				formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+			}
 		}
-
 		Map<String, Object> softConstraints = searchDTO.getSoftConstraints();
 		if (null != softConstraints && !softConstraints.isEmpty()) {
 			boolQuery.should(getSoftConstraintQuery(softConstraints));
@@ -342,6 +349,13 @@ public class SearchProcessor {
 	}
 
 	private void formQuery(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy) {
+		formQueryImpl(properties, queryBuilder, boolQuery, operation, fuzzy, null);
+	}
+
+	private void formQueryImpl(List<Map> properties, QueryBuilder queryBuilder, BoolQueryBuilder boolQuery, String operation, Boolean fuzzy, SearchDTO searchDTO) {
+		boolean enableSecureSettings = false;
+		if (searchDTO != null)
+			enableSecureSettings = searchDTO.isSecureSettings();
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
@@ -359,6 +373,11 @@ public class SearchProcessor {
 				relevanceSort = true;
 				propertyName = "all_fields";
 				queryBuilder = getAllFieldsPropertyQuery(values, fuzzy);
+				if (enableSecureSettings) {
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+				}
 				boolQuery.must(queryBuilder);
 				continue;
 			}
@@ -447,6 +466,11 @@ public class SearchProcessor {
 			}
 			}
 			if (operation.equalsIgnoreCase(AND)) {
+				if (enableSecureSettings) {
+					boolQuery.must(getSecureSettingsSearchQuery(searchDTO.getUserOrgId()));
+				} else {
+					boolQuery.mustNot(getSecureSettingsSearchDefaultQuery());
+				}
 				boolQuery.must(queryBuilder);
 			} else {
 				boolQuery.should(queryBuilder);
@@ -515,10 +539,26 @@ public class SearchProcessor {
 								.operator(Operator.AND).type(Type.CROSS_FIELDS).fuzzyTranspositions(false).lenient(true));
 			}
 		}
-
 		return queryBuilder;
 	}
+	private QueryBuilder getSecureSettingsSearchDefaultQuery() {
 
+		QueryBuilder firstNestedQuery =new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery() .mustNot(new ExistsQueryBuilder("organisation")), org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder secondNestedQuery= new NestedQueryBuilder("secureSettings", QueryBuilders.boolQuery()
+				            .filter(new RangeQueryBuilder("organisation" + ".length").lte(0)) , org.apache.lucene.search.join.ScoreMode.None);
+		QueryBuilder query = QueryBuilders.boolQuery() .should(firstNestedQuery).should (secondNestedQuery);
+
+		return query;
+	}
+
+	private QueryBuilder getSecureSettingsSearchQuery(String org_id) {
+
+		QueryBuilder query = new NestedQueryBuilder("secureSettings",
+				QueryBuilders.boolQuery().must(new ExistsQueryBuilder("secureSettings.organisation")).must(QueryBuilders.termQuery("secureSettings.organisation", org_id)), org.apache.lucene.search.join.ScoreMode.None);
+
+		return query;
+	}
 	/**
 	 * @param softConstraints
 	 * @return
@@ -732,7 +772,7 @@ public class SearchProcessor {
 		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, sort);
 		TelemetryManager.log(" search query: " + query);
 		Future<SearchResponse> searchResponse = ElasticSearchUtil.search(index, query);
-		
+
 		return searchResponse.map(new Mapper<SearchResponse, List<Object>>() {
 			public List<Object> apply(SearchResponse searchResult) {
 				List<Object> response = new ArrayList<Object>();
@@ -746,7 +786,7 @@ public class SearchProcessor {
 				return response;
 			}
 		}, ExecutionContext.Implicits$.MODULE$.global());
-		
+
 	}
 
 	public Future<SearchResponse> processSearchQueryWithSearchResult(SearchDTO searchDTO, boolean includeResults,

@@ -43,7 +43,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
      * @return
      */
     def read(identifier: String, mode: Option[String], fields: Option[String]) = Action.async { implicit request =>
-        val headers = commonHeaders()
+        val headers = commonReadHeaders()
         val content = new java.util.HashMap().asInstanceOf[java.util.Map[String, Object]]
         content.putAll(headers)
         content.putAll(Map("identifier" -> identifier, "mode" -> mode.getOrElse("read"), "fields" -> fields.getOrElse("")).asJava)
@@ -94,7 +94,7 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
     }
 
     def getHierarchy(identifier: String, mode: Option[String]) = Action.async { implicit request =>
-        val headers = commonHeaders()
+        val headers = commonReadHeaders()
         val content = new java.util.HashMap().asInstanceOf[java.util.Map[String, Object]]
         content.putAll(headers)
         content.putAll(Map("rootId" -> identifier, "mode" -> mode.getOrElse("")).asJava)

@@ -95,6 +95,12 @@ public class SearchActor extends SearchBaseActor {
         SearchDTO searchObj = new SearchDTO();
         try {
             Map<String, Object> req = request.getRequest();
+            if (req.get("secureSettings") != null) {
+                searchObj.setSecureSettings((Boolean) req.get("secureSettings"));
+            } else {
+                searchObj.setSecureSettings(false);
+            }
+            searchObj.setUserOrgId((String) request.getContext().get("x-user-channel-id"));
             TelemetryManager.log("Search Request: ", req);
             String queryString = (String) req.get(SearchConstants.query);
             int limit = getIntValue(req.get(SearchConstants.limit));

@@ -16,6 +16,8 @@ public class SearchDTO {
     private int limit;
     private int offset;
     boolean fuzzySearch = false;
+    boolean secureSettings = false;
+    String userOrgId = "";
     private Map<String, Object> additionalProperties = new HashMap<String, Object>();
     private Map<String, Object> softConstraints = new HashMap<String, Object>();
     private List<Map<String, Object>> aggregations = new ArrayList<>();
@@ -65,13 +67,20 @@ public class SearchDTO {
     public void setSortBy(Map<String, String> sortBy) {
         this.sortBy = sortBy;
     }
-
     public boolean isFuzzySearch() {
         return fuzzySearch;
     }
     public void setFuzzySearch(boolean fuzzySearch) {
         this.fuzzySearch = fuzzySearch;
     }
+    public boolean isSecureSettings() {
+        return secureSettings;
+    }
+    public void setSecureSettings(boolean secureSettings) {
+        this.secureSettings = secureSettings;
+    }
+    public String getUserOrgId() {return userOrgId;}
+    public void setUserOrgId(String userOrgId) {this.userOrgId = userOrgId;}
     public Map<String, Object> getAdditionalProperties() {
         return additionalProperties;
     }
