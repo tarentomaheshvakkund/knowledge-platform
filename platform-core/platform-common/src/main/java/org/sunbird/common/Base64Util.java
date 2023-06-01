@@ -1,4 +1,4 @@
-package org.sunbird.auth.verifier;
+package org.sunbird.common;
 
 /*
  * Copyright (C) 2010 The Android Open Source Project

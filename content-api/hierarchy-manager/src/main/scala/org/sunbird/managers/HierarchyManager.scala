@@ -4,11 +4,10 @@ import java.util
 import java.util.concurrent.CompletionException
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.commons.lang3.StringUtils
-import org.sunbird.auth.verifier.JWTUtil
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.dto.{Request, Response, ResponseHandler, ResponseParams}
 import org.sunbird.common.exception.{ClientException, ErrorCodes, ResourceNotFoundException, ResponseCode, ServerException}
-import org.sunbird.common.{JsonUtils, Platform}
+import org.sunbird.common.{JsonUtils, JWTUtil, Platform}
 import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.{NodeUtil, ScalaJsonUtils}

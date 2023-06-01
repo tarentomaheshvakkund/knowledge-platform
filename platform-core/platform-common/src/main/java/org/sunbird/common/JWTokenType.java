@@ -1,4 +1,4 @@
-package org.sunbird.auth.verifier;
+package org.sunbird.common;
 
 public enum JWTokenType {
     HS256("HS256", "HmacSHA256"),
