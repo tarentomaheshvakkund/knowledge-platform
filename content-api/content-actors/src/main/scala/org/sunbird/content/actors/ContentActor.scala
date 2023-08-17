@@ -278,7 +278,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val identifier = request.getContext.get("identifier").asInstanceOf[String]
 		RequestUtil.validateRequest(request)
 		RedisCache.delete(hierarchyPrefix + request.get("rootId"))
-		RedisCache.delete(request.get("rootId"))
+		RedisCache.delete(request.get("rootId").asInstanceOf[String])
 
 		val readReq = new Request(request)
 		val identifiers = new util.ArrayList[String](){{
