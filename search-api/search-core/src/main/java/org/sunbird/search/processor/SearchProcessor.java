@@ -68,6 +68,7 @@ public class SearchProcessor {
 				query = processSearchQuery(searchDTO, groupByFinalList, true);
 			}
 		}
+		TelemetryManager.info("Constructured Search Query: " + query);
 		searchResponse = ElasticSearchUtil.search(SearchConstants.COMPOSITE_SEARCH_INDEX, query);
 
 		return searchResponse.map(new Mapper<SearchResponse, Map<String, Object>>() {
