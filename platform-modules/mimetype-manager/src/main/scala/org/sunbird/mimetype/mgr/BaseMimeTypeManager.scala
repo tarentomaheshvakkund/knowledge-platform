@@ -214,6 +214,20 @@ class BaseMimeTypeManager(implicit ss: StorageService) {
 		}
 	}
 
+	def extractPackageInCloudAsync(objectId: String, uploadFile: File, node: Node, extractionType: String, slugFile: Boolean)(implicit ec: ExecutionContext): Future[List[String]] = {
+		val file = Slug.createSlugFile(uploadFile)
+		val mimeType = node.getMetadata.get("mimeType").asInstanceOf[String]
+		validationForCloudExtraction(file, extractionType, mimeType)
+		if(extractableMimeTypes.contains(mimeType)){
+			val extractionBasePath = getBasePath(objectId)
+				extractPackage(file, extractionBasePath)
+				ss.uploadDirectoryAsync(getExtractionPath(objectId, node, extractionType, mimeType), new File(extractionBasePath), Option(slugFile))
+		} else {
+			val emptyFuture: Future[List[String]] = Future.successful(List.empty[String])
+			emptyFuture
+		}
+	}
+
 	def extractH5PPackageInCloud(objectId: String, extractionBasePath: String, node: Node, extractionType: String, slugFile: Boolean)(implicit ec: ExecutionContext): Future[List[String]] = {
 		val mimeType = node.getMetadata.get("mimeType").asInstanceOf[String]
 		if(null == extractionType)
