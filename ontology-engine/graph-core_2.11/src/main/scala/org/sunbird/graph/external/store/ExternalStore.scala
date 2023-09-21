@@ -3,10 +3,10 @@ package org.sunbird.graph.external.store
 import java.sql.Timestamp
 import java.util
 import java.util.Date
-
 import com.datastax.driver.core.Session
 import com.datastax.driver.core.querybuilder.{Clause, Insert, QueryBuilder}
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
+import org.slf4j.LoggerFactory
 import org.sunbird.cassandra.{CassandraConnector, CassandraStore}
 import org.sunbird.common.JsonUtils
 import org.sunbird.common.dto.{Response, ResponseHandler}
@@ -16,6 +16,8 @@ import org.sunbird.telemetry.logger.TelemetryManager
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class ExternalStore(keySpace: String , table: String , primaryKey: java.util.List[String]) extends CassandraStore(keySpace, table, primaryKey) {
+
+    val logger = LoggerFactory.getLogger("org.sunbird.graph.schema.validator.FrameworkValidator")
 
     def insert(request: util.Map[String, AnyRef], propsMapping: Map[String, String])(implicit ec: ExecutionContext): Future[Response] = {
         val insertQuery: Insert = QueryBuilder.insertInto(keySpace, table)
@@ -169,6 +171,7 @@ class ExternalStore(keySpace: String , table: String , primaryKey: java.util.Lis
                 case _ => update.`with`(QueryBuilder.set(column, values(index)))
             }
         }
+        logger.info("Query for update hierarchy is :"+update)
         try {
             val session: Session = CassandraConnector.getSession
             session.executeAsync(update).asScala.map( resultset => {
