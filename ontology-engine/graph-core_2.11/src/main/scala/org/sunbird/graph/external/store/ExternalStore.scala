@@ -171,7 +171,8 @@ class ExternalStore(keySpace: String , table: String , primaryKey: java.util.Lis
                 case _ => update.`with`(QueryBuilder.set(column, values(index)))
             }
         }
-        logger.info("Query for update hierarchy is :"+update)
+        var updateQuery : String = update.toString
+        logger.info("Query for update hierarchy is :"+updateQuery)
         try {
             val session: Session = CassandraConnector.getSession
             session.executeAsync(update).asScala.map( resultset => {
