@@ -29,7 +29,7 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     def updateHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
-        logger.info("Question set update hierarchy request body :" + request)
+        logger.info("Question set update hierarchy request body : {}", request)
         val (nodesModified, hierarchy) = validateRequest(request)
         val rootId: String = getRootId(nodesModified, hierarchy)
         request.getContext.put(HierarchyConstants.ROOT_ID, rootId)

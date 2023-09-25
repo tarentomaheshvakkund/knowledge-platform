@@ -28,7 +28,7 @@ object UpdateHierarchyManager {
 
     @throws[Exception]
     def updateHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
-        logger.info("UpdateHierarchyManager.updateHierarchy = request Body is : " + request)
+        logger.info("UpdateHierarchyManager.updateHierarchy = request Body is :  {}", request)
         validateRequest(request)
         val nodesModified: java.util.HashMap[String, AnyRef] = request.getRequest.get(HierarchyConstants.NODES_MODIFIED).asInstanceOf[java.util.HashMap[String, AnyRef]]
         val hierarchy: java.util.HashMap[String, AnyRef] = request.getRequest.get(HierarchyConstants.HIERARCHY).asInstanceOf[java.util.HashMap[String, AnyRef]]
