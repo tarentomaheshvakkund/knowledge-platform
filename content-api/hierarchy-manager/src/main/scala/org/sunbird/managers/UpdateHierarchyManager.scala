@@ -3,6 +3,7 @@ package org.sunbird.managers
 import java.util.concurrent.CompletionException
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
+import org.slf4j.LoggerFactory
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ErrorCodes, ResourceNotFoundException, ResponseCode, ServerException}
 import org.sunbird.common.{DateUtils, JsonUtils, Platform}
@@ -23,8 +24,11 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object UpdateHierarchyManager {
 
+    val logger = LoggerFactory.getLogger("org.sunbird.graph.schema.validator.FrameworkValidator")
+
     @throws[Exception]
     def updateHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+        logger.info("UpdateHierarchyManager.updateHierarchy = request Body is :  {}", request)
         validateRequest(request)
         val nodesModified: java.util.HashMap[String, AnyRef] = request.getRequest.get(HierarchyConstants.NODES_MODIFIED).asInstanceOf[java.util.HashMap[String, AnyRef]]
         val hierarchy: java.util.HashMap[String, AnyRef] = request.getRequest.get(HierarchyConstants.HIERARCHY).asInstanceOf[java.util.HashMap[String, AnyRef]]
