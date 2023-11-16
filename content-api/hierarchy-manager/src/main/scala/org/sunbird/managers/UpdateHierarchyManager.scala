@@ -24,7 +24,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object UpdateHierarchyManager {
 
-    val logger = LoggerFactory.getLogger("hierarchy-manager.org.sunbird.managers.UpdateHierarchyManager")
+    val logger = LoggerFactory.getLogger("org.sunbird.managers.UpdateHierarchyManager")
     @throws[Exception]
     def updateHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
         logger.info("UpdateHierarchyManager.updateHierarchy = request Body is :  {}", request)
