@@ -25,7 +25,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object UpdateHierarchyManager {
     val neo4jCreateTypes: java.util.List[String] = Platform.getStringList("neo4j_objecttypes_enabled", List("Question").asJava)
-    val logger = LoggerFactory.getLogger("org.sunbird.graph.schema.validator.FrameworkValidator")
+    val logger = LoggerFactory.getLogger("qs-hierarchy-manager.org.sunbird.managers.UpdateHierarchyManager")
 
     @throws[Exception]
     def updateHierarchy(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {

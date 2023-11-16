@@ -16,7 +16,7 @@ import org.sunbird.telemetry.logger.TelemetryManager
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class ExternalStore(keySpace: String , table: String , primaryKey: java.util.List[String]) extends CassandraStore(keySpace, table, primaryKey) {
-    val logger = LoggerFactory.getLogger("org.sunbird.graph.schema.validator.FrameworkValidator")
+    val logger = LoggerFactory.getLogger("org.sunbird.graph.external.store.ExternalStore")
 
     def insert(request: util.Map[String, AnyRef], propsMapping: Map[String, String])(implicit ec: ExecutionContext): Future[Response] = {
         val insertQuery: Insert = QueryBuilder.insertInto(keySpace, table)
