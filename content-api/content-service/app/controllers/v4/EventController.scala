@@ -57,7 +57,8 @@ class EventController @Inject()(@Named(ActorNames.EVENT_ACTOR) eventActor: Actor
 
     def publish(identifier: String): Action[AnyContent] = Action.async { implicit request =>
         val headers = commonHeaders()
-        val content = new java.util.HashMap[String, Object]()
+        val body = requestBody()
+        val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
         content.put("status", "Live")
         content.put("identifier", identifier)
         content.putAll(headers)
@@ -67,4 +68,14 @@ class EventController @Inject()(@Named(ActorNames.EVENT_ACTOR) eventActor: Actor
         getResult(ApiId.PUBLISH_EVENT, eventActor, contentRequest, version = apiVersion)
     }
 
+    override def retire(identifier: String) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]
+        content.put("identifier", identifier)
+        content.putAll(headers)
+        val contentRequest = getRequest(content, headers, "retireContent")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        getResult(ApiId.RETIRE_CONTENT, eventActor, contentRequest, version = apiVersion)
+    }
 }

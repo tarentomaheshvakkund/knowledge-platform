@@ -29,22 +29,11 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
   }
 
   override def update(request: Request): Future[Response] = {
-    verifyStandaloneEventAndApply(super.update, request, Some(node => {
-      if (!"Draft".equalsIgnoreCase(node.getMetadata.getOrDefault("status", "").toString)) {
-        throw new ClientException(ContentConstants.ERR_CONTENT_NOT_DRAFT, "Update not allowed! Event status isn't draft")
-      }
-    }))
+    verifyStandaloneEventAndApply(super.update, request)
   }
 
   def publish(request: Request): Future[Response] = {
-    verifyStandaloneEventAndApply(super.update, request, Some(node => {
-      if (!"Draft".equalsIgnoreCase(node.getMetadata.getOrDefault("status", "").toString)) {
-        throw new ClientException(ContentConstants.ERR_CONTENT_NOT_DRAFT, "Publish not allowed! Event status isn't draft")
-      }
-      val versionKey = node.getMetadata.getOrDefault("versionKey", "").toString
-      if (StringUtils.isNotBlank(versionKey))
-        request.put("versionKey", versionKey)
-    }))
+    verifyStandaloneEventAndApply(super.update, request)
   }
 
   override def discard(request: Request): Future[Response] = {
