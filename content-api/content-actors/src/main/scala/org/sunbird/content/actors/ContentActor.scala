@@ -55,6 +55,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "systemUpdate" => systemUpdate(request)
 			case "reviewContent" => reviewContent(request)
 			case "rejectContent" => rejectContent(request)
+			case "adminReadContent" => adminRead(request)
 			case _ => ERROR(request.getOperation)
 		}
 	}
@@ -321,6 +322,23 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
 			})
 		}).flatMap(f => f)
+	}
+
+	def adminRead(request: Request): Future[Response] = {
+		val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+		val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+		request.getRequest.put("fields", fields)
+		DataNode.read(request).map(node => {
+			val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
+			metadata.put("identifier", node.getIdentifier.replace(".img", ""))
+			val response: Response = ResponseHandler.OK
+			if (responseSchemaName.isEmpty) {
+				response.put("content", metadata)
+			} else {
+				response.put(responseSchemaName, metadata)
+			}
+			response
+		})
 	}
 
 }
