@@ -71,6 +71,22 @@ object UpdateHierarchyManager {
                 .getOrDefault(HierarchyConstants.OBJECT_TYPE, "").asInstanceOf[String], "Question"))
                 throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Question cannot have children in hierarchy")
         })
+        val iterator = nodesModified.entrySet().iterator()
+        while (iterator.hasNext) {
+            val entry = iterator.next()
+            val questionData = entry.getValue().asInstanceOf[java.util.HashMap[String, AnyRef]]
+            val metadata = questionData.get(HierarchyConstants.METADATA).asInstanceOf[java.util.HashMap[String, AnyRef]]
+            val choices = metadata.get("choices").asInstanceOf[java.util.HashMap[String, AnyRef]].get("options").asInstanceOf[java.util.List[java.util.HashMap[String, AnyRef]]].asScala.toList
+            for (option <- choices) {
+                val answerType = option.get("answer")
+                if (!answerType.isInstanceOf[java.lang.Boolean]) {
+                    val questionBody = metadata.get("body").asInstanceOf[String]
+                    val optionBody = option.get("value").asInstanceOf[java.util.HashMap[String, AnyRef]].get("body")
+                    println(s"Error: Question '$questionBody', Option '$optionBody' has a non-boolean answer.")
+                    throw new ClientException("ERR_QS_UPDATE_HIERARCHY", s"Error: Question : '$questionBody', Option : '$optionBody' answer value should be either true or false")
+                }
+            }
+        }
         (nodesModified, hierarchy)
     }
 
