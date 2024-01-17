@@ -76,14 +76,15 @@ object UpdateHierarchyManager {
             val entry = iterator.next()
             val questionData = entry.getValue().asInstanceOf[java.util.HashMap[String, AnyRef]]
             val metadata = questionData.get(HierarchyConstants.METADATA).asInstanceOf[java.util.HashMap[String, AnyRef]]
-            val choices = metadata.get("choices").asInstanceOf[java.util.HashMap[String, AnyRef]].get("options").asInstanceOf[java.util.List[java.util.HashMap[String, AnyRef]]].asScala.toList
-            for (option <- choices) {
-                val answerType = option.get("answer")
-                if (!answerType.isInstanceOf[java.lang.Boolean]) {
-                    val questionBody = metadata.get("body").asInstanceOf[String]
-                    val optionBody = option.get("value").asInstanceOf[java.util.HashMap[String, AnyRef]].get("body")
-                    println(s"Error: Question '$questionBody', Option '$optionBody' has a non-boolean answer.")
-                    throw new ClientException("ERR_QS_UPDATE_HIERARCHY", s"Error: Question : '$questionBody', Option : '$optionBody' answer value should be either true or false")
+            if (metadata.get(HierarchyConstants.PRIMARY_CATEGORY) == "Multiple Choice Question") {
+                val choices = metadata.get(HierarchyConstants.CHOICES).asInstanceOf[java.util.HashMap[String, AnyRef]].get(HierarchyConstants.OPTIONS).asInstanceOf[java.util.List[java.util.HashMap[String, AnyRef]]].asScala.toList
+                for (option <- choices) {
+                    val answerType = option.get(HierarchyConstants.ANSWER)
+                    if (!answerType.isInstanceOf[java.lang.Boolean]) {
+                        val questionBody = metadata.get(HierarchyConstants.BODY).asInstanceOf[String]
+                        val optionBody = option.get(HierarchyConstants.VALUE).asInstanceOf[java.util.HashMap[String, AnyRef]].get(HierarchyConstants.BODY)
+                        throw new ClientException("ERR_QS_UPDATE_HIERARCHY", s"Error: Question : '$questionBody', Option : '$optionBody' has a non-boolean answer. The answer value should be either true or false.")
+                    }
                 }
             }
         }
