@@ -82,7 +82,7 @@ object UpdateHierarchyManager {
                 case Some(map: java.util.HashMap[_, _]) => map.asInstanceOf[java.util.HashMap[String, AnyRef]]
                 case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing metadata.")
             }
-            if (metadata.get(HierarchyConstants.PRIMARY_CATEGORY) == "Multiple Choice Question") {
+            if (metadata.get(HierarchyConstants.PRIMARY_CATEGORY) == HierarchyConstants.MCQ) {
                 val primaryCategory = Option(metadata.get(HierarchyConstants.PRIMARY_CATEGORY)) match {
                     case Some(category: String) => category
                     case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing primary category.")
