@@ -57,4 +57,13 @@ object HierarchyConstants {
     val SOURCE: String = "source"
     val PRE_CONDITION: String = "preCondition"
     val QUESTION_VISIBILITY: List[String] = List("Default", "Parent")
+    val OPTIONS = "options"
+    val CHOICES = "choices"
+    val ANSWER = "answer"
+    val BODY = "body"
+    val VALUE = "value"
+    val PRIMARY_CATEGORY = "primaryCategory"
+    val MCQ = "Multiple Choice Question"
+
+
 }
