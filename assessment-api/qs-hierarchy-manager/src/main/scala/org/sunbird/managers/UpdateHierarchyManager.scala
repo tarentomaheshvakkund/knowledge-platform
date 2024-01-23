@@ -74,16 +74,55 @@ object UpdateHierarchyManager {
         val iterator = nodesModified.entrySet().iterator()
         while (iterator.hasNext) {
             val entry = iterator.next()
-            val questionData = entry.getValue().asInstanceOf[java.util.HashMap[String, AnyRef]]
-            val metadata = questionData.get(HierarchyConstants.METADATA).asInstanceOf[java.util.HashMap[String, AnyRef]]
+            val questionData = entry.getValue() match {
+                case map: java.util.HashMap[_, _] => map.asInstanceOf[java.util.HashMap[String, AnyRef]]
+                case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Invalid question data.")
+            }
+            val metadata = Option(questionData.get(HierarchyConstants.METADATA)) match {
+                case Some(map: java.util.HashMap[_, _]) => map.asInstanceOf[java.util.HashMap[String, AnyRef]]
+                case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing metadata.")
+            }
             if (metadata.get(HierarchyConstants.PRIMARY_CATEGORY) == "Multiple Choice Question") {
-                val choices = metadata.get(HierarchyConstants.CHOICES).asInstanceOf[java.util.HashMap[String, AnyRef]].get(HierarchyConstants.OPTIONS).asInstanceOf[java.util.List[java.util.HashMap[String, AnyRef]]].asScala.toList
-                for (option <- choices) {
-                    val answerType = option.get(HierarchyConstants.ANSWER)
-                    if (!answerType.isInstanceOf[java.lang.Boolean]) {
-                        val questionBody = metadata.get(HierarchyConstants.BODY).asInstanceOf[String]
-                        val optionBody = option.get(HierarchyConstants.VALUE).asInstanceOf[java.util.HashMap[String, AnyRef]].get(HierarchyConstants.BODY)
-                        throw new ClientException("ERR_QS_UPDATE_HIERARCHY", s"Error: Question : '$questionBody', Option : '$optionBody' has a non-boolean answer. The answer value should be either true or false.")
+                val primaryCategory = Option(metadata.get(HierarchyConstants.PRIMARY_CATEGORY)) match {
+                    case Some(category: String) => category
+                    case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing primary category.")
+                }
+
+                if (primaryCategory == "Multiple Choice Question") {
+                    val choices = Option(metadata.get(HierarchyConstants.CHOICES)) match {
+                        case Some(choiceMap: java.util.HashMap[_, _]) =>
+                            val options = Option(choiceMap.get(HierarchyConstants.OPTIONS)) match {
+                                case Some(optionsList: java.util.List[_]) =>
+                                    optionsList.asInstanceOf[java.util.List[java.util.HashMap[String, AnyRef]]].asScala.toList
+                                case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing options.")
+                            }
+                            options
+                        case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing choices.")
+                    }
+
+                    for (option <- choices) {
+                        val answerType = Option(option.get(HierarchyConstants.ANSWER)) match {
+                            case Some(answer) => answer
+                            case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing answer type.")
+                        }
+
+                        if (!answerType.isInstanceOf[java.lang.Boolean]) {
+                            val questionBody = Option(metadata.get(HierarchyConstants.BODY)) match {
+                                case Some(body: String) => body
+                                case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing question body.")
+                            }
+
+                            val optionBody = Option(option.get(HierarchyConstants.VALUE)) match {
+                                case Some(valueMap: java.util.HashMap[_, _]) =>
+                                    Option(valueMap.get(HierarchyConstants.BODY)) match {
+                                        case Some(body) => body
+                                        case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing option body.")
+                                    }
+                                case _ => throw new ClientException("ERR_QS_UPDATE_HIERARCHY", "Error: Missing option value map.")
+                            }
+
+                            throw new ClientException("ERR_QS_UPDATE_HIERARCHY", s"Error: Question : '$questionBody', Option : '$optionBody' has a non-boolean answer. The answer value should be either true or false.")
+                        }
                     }
                 }
             }
