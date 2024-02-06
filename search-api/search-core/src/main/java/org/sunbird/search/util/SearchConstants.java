@@ -115,4 +115,6 @@ public class SearchConstants {
     public static final String setDefaultVisibility = "setDefaultVisibility";
     public static String soft = "soft";
     public static String secureSettings = "secureSettings";
+    public static String isSecureSettingsDisabled = "isSecureSettingsDisabled";
+    public static String secureSettingsOrganisation = "secureSettings.organisation";
 }

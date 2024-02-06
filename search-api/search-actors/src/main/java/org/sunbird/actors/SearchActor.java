@@ -100,6 +100,11 @@ public class SearchActor extends SearchBaseActor {
             } else {
                 searchObj.setSecureSettings(false);
             }
+            if (req.get(SearchConstants.isSecureSettingsDisabled) != null) {
+                searchObj.setSecureSettingsDisabled((Boolean) req.get(SearchConstants.isSecureSettingsDisabled));
+            } else {
+                searchObj.setSecureSettingsDisabled(false);
+            }
             searchObj.setUserOrgId((String) request.getContext().get("x-user-channel-id"));
             TelemetryManager.log("Search Request: ", req);
             String queryString = (String) req.get(SearchConstants.query);
@@ -125,6 +130,21 @@ public class SearchActor extends SearchBaseActor {
             if (filters.containsKey("relatedBoards"))
                 filters.remove("relatedBoards");
 
+            Map<String, Object> secureSettingsFilter = new HashMap<>();
+            for (String key : filters.keySet()) {
+                if (key.startsWith(SearchConstants.secureSettings)) {
+                    secureSettingsFilter.put(key, filters.get(key));
+                }
+            }
+            searchObj.setPostFilter(secureSettingsFilter);
+            if (MapUtils.isEmpty(searchObj.getPostFilter())) {
+                secureSettingsFilter.put(SearchConstants.secureSettingsOrganisation, searchObj.getUserOrgId());
+                searchObj.setPostFilter(secureSettingsFilter);
+            } else {
+                for(String key: searchObj.getPostFilter().keySet()) {
+                    filters.remove(key);
+                }
+            }
             Object objectTypeFromFilter = filters.get(SearchConstants.objectType);
             String objectType = null;
             if (objectTypeFromFilter != null) {

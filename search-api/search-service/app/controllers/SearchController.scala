@@ -57,4 +57,25 @@ class SearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchActor: Ac
         setHeaderContext(internalReq)
         getResult(mgr.count(internalReq, searchActor), ApiId.APPLICATION_COUNT)
     }
+
+    def searchV4() = loggingAction.async { implicit request =>
+        val internalReq = getRequest(ApiId.APPLICATION_SEARCH)
+        val requestMap: java.util.Map[String, Any] = internalReq.getRequest.asInstanceOf[util.Map[String, Any]]
+        requestMap.put(SearchConstants.isSecureSettingsDisabled, true)
+        setHeaderContext(internalReq)
+        val filters = internalReq.getRequest.getOrDefault(SearchConstants.filters, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]
+        val visibilityObject = filters.getOrDefault("visibility","")
+        var visibility:util.List[String] = null
+        if (visibilityObject != null) {
+            if (visibilityObject.isInstanceOf[util.ArrayList[_]]) visibility = visibilityObject.asInstanceOf[util.ArrayList[String]]
+            else if (visibilityObject.isInstanceOf[String]) visibility = util.Arrays.asList(visibilityObject.asInstanceOf[String])
+        }
+        if (visibility.contains("Private")) {
+            getErrorResponse(ApiId.APPLICATION_SEARCH, apiVersion, SearchConstants.ERR_ACCESS_DENIED, "Cannot access private content through public search api")
+        }
+        else {
+            internalReq.getContext.put(SearchConstants.setDefaultVisibility, "true")
+            getResult(mgr.search(internalReq, searchActor), ApiId.APPLICATION_SEARCH)
+        }
+    }
 }

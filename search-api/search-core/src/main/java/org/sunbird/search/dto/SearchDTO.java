@@ -23,7 +23,8 @@ public class SearchDTO {
     private List<Map<String, Object>> aggregations = new ArrayList<>();
     private List<Map> implicitFilterProperties;
     private List<Map> multiFilterProperties;
-
+    boolean isSecureSettingsDisabled = false;
+    private Map<String, Object> postFilter = new HashMap<>();
 
     public SearchDTO() {
         super();
@@ -136,5 +137,21 @@ public class SearchDTO {
 
     public void setMultiFilterProperties(List<Map> multiFilterProperties) {
         this.multiFilterProperties = multiFilterProperties;
+    }
+
+    public boolean isSecureSettingsDisabled() {
+        return isSecureSettingsDisabled;
+    }
+
+    public void setSecureSettingsDisabled(boolean secureSettingsDisabled) {
+        isSecureSettingsDisabled = secureSettingsDisabled;
+    }
+
+    public Map<String, Object> getPostFilter() {
+        return postFilter;
+    }
+
+    public void setPostFilter(Map<String, Object> postFilter) {
+        this.postFilter = postFilter;
     }
 }
