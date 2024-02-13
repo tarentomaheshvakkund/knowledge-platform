@@ -910,7 +910,7 @@ public class SearchProcessor {
 		for (Map.Entry<String, Object> filters : postFilter.entrySet()) {
 			if (filters.getValue() instanceof List) {
 				for (String value : (List<String>) filters.getValue()) {
-					nestedBoolQuery.should(QueryBuilders.termQuery(filters.getKey(), value));
+					nestedBoolQuery.must(QueryBuilders.termQuery(filters.getKey(), value));
 				}
 			} else if (filters.getValue() instanceof String) {
 				nestedBoolQuery.should(QueryBuilders.termQuery(filters.getKey(), ((String) filters.getValue()).toLowerCase()));
