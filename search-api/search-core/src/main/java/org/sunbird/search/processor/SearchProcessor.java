@@ -913,7 +913,7 @@ public class SearchProcessor {
 					nestedBoolQuery.must(QueryBuilders.termQuery(filters.getKey(), value));
 				}
 			} else if (filters.getValue() instanceof String) {
-				nestedBoolQuery.should(QueryBuilders.termQuery(filters.getKey(), ((String) filters.getValue()).toLowerCase()));
+				nestedBoolQuery.must(QueryBuilders.termQuery(filters.getKey(), ((String) filters.getValue()).toLowerCase()));
 			}
 		}
 
