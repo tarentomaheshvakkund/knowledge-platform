@@ -50,7 +50,7 @@ object RetireManager {
 
     private def validateRequest(request: Request) = {
         val contentId: String = request.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
-        if (StringUtils.isBlank(contentId) || StringUtils.endsWithIgnoreCase(contentId, HierarchyConstants.IMAGE_SUFFIX))
+        if (StringUtils.isBlank(contentId))
             throw new ClientException(ContentConstants.ERR_INVALID_CONTENT_ID, "Please Provide Valid Content Identifier.")
     }
 
