@@ -792,7 +792,7 @@ public class SearchProcessor {
 		if (searchDTO.getLimit() == 0)
 			searchDTO.setLimit(ElasticSearchUtil.defaultResultLimit);
 		SearchSourceBuilder query = processSearchQuery(searchDTO, groupByFinalList, sort);
-		TelemetryManager.log(" search query: " + query);
+		TelemetryManager.info(" search query: " + query);
 		Future<SearchResponse> searchResponse = ElasticSearchUtil.search(index, query);
 
 		return searchResponse.map(new Mapper<SearchResponse, List<Object>>() {
@@ -804,7 +804,7 @@ public class SearchProcessor {
 				for (SearchHit hit : result) {
 					response.add(hit.getSourceAsMap());
 				}
-				TelemetryManager.log("search response size: " + response.size());
+				TelemetryManager.info("search response size: " + response.size());
 				return response;
 			}
 		}, ExecutionContext.Implicits$.MODULE$.global());

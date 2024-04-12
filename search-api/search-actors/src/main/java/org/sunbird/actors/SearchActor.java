@@ -267,6 +267,7 @@ public class SearchActor extends SearchBaseActor {
             searchObj.setFacets(facets);
             searchObj.setProperties(properties);
             if (multiFilters != null) {
+                multiFilters.put(SearchConstants.objectType, SearchConstants.Content);
                 List<Map> multiFilterProperties = new ArrayList<Map>();
                 multiFilterProperties.addAll(getSearchFilterProperties(multiFilters, wordChainsRequest, request));
                 searchObj.setMultiFilterProperties(multiFilterProperties);
