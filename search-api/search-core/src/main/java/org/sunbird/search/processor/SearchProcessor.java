@@ -345,12 +345,12 @@ public class SearchProcessor {
 
 		if (searchDTO.getMultiFilterProperties() != null) {
 			if (searchDTO.isSecureSettingsDisabled()) {
-				formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+				formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch(), searchDTO);
 			} else {
 				if (searchDTO.isSecureSettings() == false)
 					formQuery(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch());
 				else {
-					formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, totalOperation, searchDTO.isFuzzySearch(), searchDTO);
+					formQueryImpl(searchDTO.getMultiFilterProperties(), queryBuilder, boolQuery, SearchConstants.SEARCH_OPERATION_OR, searchDTO.isFuzzySearch(), searchDTO);
 				}
 			}
 		}
