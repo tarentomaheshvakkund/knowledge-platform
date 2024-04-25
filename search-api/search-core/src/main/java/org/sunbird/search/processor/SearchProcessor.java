@@ -4,8 +4,8 @@ import akka.dispatch.Mapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
-import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder.Type;
@@ -377,6 +377,12 @@ public class SearchProcessor {
 		for (Map<String, Object> property : properties) {
 			String opertation = (String) property.get("operation");
 
+			Object objValues = property.get("values");
+			Map<String, Object> valuesMap = new HashMap<>();
+			if (objValues instanceof Map) {
+				valuesMap = (Map<String, Object>) property.get("values");
+			}
+
 			List<Object> values;
 			try {
 				values = (List<Object>) property.get("values");
@@ -406,8 +412,12 @@ public class SearchProcessor {
 
 			switch (opertation) {
 			case SearchConstants.SEARCH_OPERATION_EQUAL: {
-				queryBuilder = getMustTermQuery(propertyName, values, true);
-				queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+				if (MapUtils.isNotEmpty(valuesMap)) {
+					queryBuilder = getMustTermQuery(valuesMap, true);
+				} else {
+					queryBuilder = getMustTermQuery(propertyName, values, true);
+					queryBuilder = checkNestedProperty(queryBuilder, propertyName);
+				}
 				break;
 			}
 			case SearchConstants.SEARCH_OPERATION_NOT_EQUAL: {
@@ -936,5 +946,26 @@ public class SearchProcessor {
 		postFilterBoolQuery.should(mustNotBoolQuery);
 
 		return postFilterBoolQuery;
+	}
+
+	private QueryBuilder getMustTermQuery(Map<String, Object> propertyMap, boolean match) {
+		BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
+		Set<Map.Entry<String, Object>> entrySet = propertyMap.entrySet();
+		for (Map.Entry<String, Object> entry : entrySet) {
+			String propertyName = (String) entry.getKey();
+			propertyName = propertyName + SearchConstants.RAW_FIELD_EXTENSION;
+			List<Object> valueList = (List<Object>) entry.getValue();
+			for (Object value : valueList) {
+				if (match) {
+					queryBuilder.should(
+							QueryBuilders.matchQuery(propertyName, value).fuzzyTranspositions(false));
+				} else {
+					queryBuilder.mustNot(
+							QueryBuilders.matchQuery(propertyName, value).fuzzyTranspositions(false));
+				}
+			}
+		}
+
+		return queryBuilder;
 	}
 }

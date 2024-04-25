@@ -448,7 +448,14 @@ public class SearchActor extends SearchBaseActor {
                 Object filterObject = entry.getValue();
                 if (filterObject instanceof Map) {
                     Map<String, Object> filterMap = (Map<String, Object>) filterObject;
-                    if (!filterMap.containsKey(SearchConstants.SEARCH_OPERATION_RANGE_MIN)
+                    if (SearchConstants.must.equalsIgnoreCase(entry.getKey())) {
+                        Map<String, Object> property = new HashMap<String, Object>();
+                        property.put(SearchConstants.values, entry.getValue());
+                        property.put(SearchConstants.propertyName, entry.getKey());
+                        property.put(SearchConstants.operation,
+                                SearchConstants.SEARCH_OPERATION_EQUAL);
+                        properties.add(property);
+                    } else if (!filterMap.containsKey(SearchConstants.SEARCH_OPERATION_RANGE_MIN)
                             && !filterMap.containsKey(SearchConstants.SEARCH_OPERATION_RANGE_MAX)) {
                         for (Map.Entry<String, Object> filterEntry : filterMap.entrySet()) {
                             Map<String, Object> property = new HashMap<String, Object>();
