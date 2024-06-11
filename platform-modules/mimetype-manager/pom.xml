@@ -28,9 +28,9 @@
             <type>jar</type>
         </dependency>
         <dependency>
-            <groupId>org.sunbird</groupId>
+            <groupId>io.github.karthik-tarento</groupId>
             <artifactId>cloud-store-sdk</artifactId>
-            <version>1.4.7</version>
+            <version>1.4.5</version>
         </dependency>
         <dependency>
             <groupId>org.scala-lang</groupId>
