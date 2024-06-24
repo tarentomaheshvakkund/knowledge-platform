@@ -20,36 +20,22 @@ class StorageService {
     @throws[Exception]
     def getService(): BaseStorageService = {
         if (null == storageService) {
-            if (StringUtils.equalsIgnoreCase(storageType, "azure")) {
-                val storageKey = Platform.config.getString("azure_storage_key")
-                val storageSecret = Platform.config.getString("azure_storage_secret")
-                storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret))
-            } else if (StringUtils.equalsIgnoreCase(storageType, "aws")) {
-                val storageKey = Platform.config.getString("aws_storage_key")
-                val storageSecret = Platform.config.getString("aws_storage_secret")
-                storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret))
-            }
-            else if (StringUtils.equalsIgnoreCase(storageType, "cephs3")) {
-                val storageKey = Platform.config.getString("cephs3_storage_key")
-                val storageSecret = Platform.config.getString("cephs3_storage_secret")
-                val endpoint = Platform.config.getString("cephs3_storage_endpoint")
-                storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret, Option(endpoint)))
 
-            }
-            else throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Error while initialising cloud storage")
+            val storageKey = Platform.config.getString("cloud_storage_key")
+            val storageSecret = Platform.config.getString("cloud_storage_secret")
+            // TODO: endPoint defined to support "cephs3". Make code changes after cloud-store-sdk 2.11 support it.
+            val endPoint = if (Platform.config.hasPath("cloud_storage_endpoint")) Option(Platform.config.getString("cloud_storage_endpoint")) else None
+            println("StorageService --> params: " +  storageType + "," + storageKey)
+            storageService = StorageServiceFactory.getStorageService(new StorageConfig(storageType, storageKey, storageSecret, endPoint))
         }
         storageService
     }
 
     def getContainerName(): String = {
-        if (StringUtils.equalsIgnoreCase(storageType, "azure"))
-            Platform.config.getString("azure_storage_container")
-        else if (StringUtils.equalsIgnoreCase(storageType, "aws"))
-            Platform.config.getString("aws_storage_container")
-        else if (StringUtils.equalsIgnoreCase(storageType, "cephs3"))
-            Platform.config.getString("cephs3_storage_container")
-        else
-            throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Container name not configured.")
+      if(Platform.config.hasPath("cloud_storage_container"))
+        Platform.config.getString("cloud_storage_container")
+      else
+        throw new ServerException("ERR_INVALID_CLOUD_STORAGE", "Cloud Storage Container name not configured.")
     }
 
     def uploadFile(folderName: String, file: File, slug: Option[Boolean] = Option(true)): Array[String] = {
