@@ -28,9 +28,9 @@
             <type>jar</type>
         </dependency>
         <dependency>
-            <groupId>io.github.karthik-tarento</groupId>
-            <artifactId>cloud-store-sdk</artifactId>
-            <version>1.4.5</version>
+            <groupId>net.karmayogibharat</groupId>
+            <artifactId>cloud-store-sdk_2.11</artifactId>
+            <version>1.4.6</version>
         </dependency>
         <dependency>
             <groupId>org.scala-lang</groupId>
