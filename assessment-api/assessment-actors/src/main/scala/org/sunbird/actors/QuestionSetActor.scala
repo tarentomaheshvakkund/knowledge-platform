@@ -144,9 +144,9 @@ class QuestionSetActor @Inject()(implicit oec: OntologyEngineContext) extends Ba
 		RequestUtil.validateRequest(request)
 		if(Platform.getBoolean("questionset.cache.enable", false)) {
 			RedisCache.delete(hierarchyPrefix + identifier)
-			RedisCache.delete(identifier)
 		}
 
+		RedisCache.delete(identifier)
 		val readReq = new Request(request)
 		val identifiers = new util.ArrayList[String](){{
 			add(identifier)
