@@ -3,6 +3,7 @@ package org.sunbird.actors
 import org.apache.commons.lang3.StringUtils
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
+import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.{DateUtils, Platform}
 import org.sunbird.graph.OntologyEngineContext
@@ -92,6 +93,7 @@ class QuestionActor @Inject()(implicit oec: OntologyEngineContext) extends BaseA
 	def systemUpdate(request: Request): Future[Response] = {
 		val identifier = request.getContext.get("identifier").asInstanceOf[String]
 		RequestUtil.validateRequest(request)
+		RedisCache.delete(identifier)
 		val readReq = new Request(request)
 		val identifiers = new util.ArrayList[String](){{
 			add(identifier)
