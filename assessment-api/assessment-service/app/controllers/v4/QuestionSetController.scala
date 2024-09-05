@@ -2,12 +2,20 @@ package controllers.v4
 
 import akka.actor.{ActorRef, ActorSystem}
 import controllers.BaseController
+import org.apache.commons.lang3.StringUtils
+import org.sunbird.common.dto.{Request, Response, ResponseHandler}
+import org.sunbird.graph.nodes.DataNode
+import org.sunbird.graph.utils.NodeUtil
+import org.sunbird.utils.RequestUtil
+
 import javax.inject.{Inject, Named}
 import play.api.mvc.ControllerComponents
-import utils.{ActorNames, ApiId, QuestionSetOperations}
+import utils.{ActorNames, ApiId, QuestionOperations, QuestionSetOperations}
 
+import java.util
+import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class QuestionSetController @Inject()(@Named(ActorNames.QUESTION_SET_ACTOR) questionSetActor: ActorRef, cc: ControllerComponents, actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends BaseController(cc) {
 
@@ -15,7 +23,7 @@ class QuestionSetController @Inject()(@Named(ActorNames.QUESTION_SET_ACTOR) ques
 	val schemaName: String = "questionset"
 	val version = "1.0"
 
-	def create() = Action.async { implicit request =>
+	def create() = Action.async { implicit request =>list
 		val headers = commonHeaders()
 		val body = requestBody()
 		val questionSet = body.getOrDefault("questionset", new java.util.HashMap()).asInstanceOf[java.util.Map[String, AnyRef]]
@@ -23,6 +31,18 @@ class QuestionSetController @Inject()(@Named(ActorNames.QUESTION_SET_ACTOR) ques
 		val questionSetRequest = getRequest(questionSet, headers, QuestionSetOperations.createQuestionSet.toString)
 		setRequestContext(questionSetRequest, version, objectType, schemaName)
 		getResult(ApiId.CREATE_QUESTION_SET, questionSetActor, questionSetRequest)
+	}
+
+	def list(fields: Option[String]) = Action.async { implicit request =>
+		val headers = commonHeaders()
+		val body = requestBody()
+		val question = body.getOrDefault("search", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+		question.putAll(headers)
+		question.put("fields", fields.getOrElse(""))
+		val questionSetRequest = getRequest(question, headers, QuestionOperations.listQuestionSet.toString)
+		questionSetRequest.put("identifiers", questionSetRequest.get("identifier"))
+		setRequestContext(questionSetRequest, version, objectType, schemaName)
+		getResult(ApiId.LIST_QUESTIONSET, questionSetActor, questionSetRequest)
 	}
 
 	def read(identifier: String, mode: Option[String], fields: Option[String]) = Action.async { implicit request =>
