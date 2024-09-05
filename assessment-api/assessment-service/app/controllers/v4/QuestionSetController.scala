@@ -39,7 +39,7 @@ class QuestionSetController @Inject()(@Named(ActorNames.QUESTION_SET_ACTOR) ques
 		val question = body.getOrDefault("search", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
 		question.putAll(headers)
 		question.put("fields", fields.getOrElse(""))
-		val questionSetRequest = getRequest(question, headers, QuestionOperations.listQuestionSet.toString)
+		val questionSetRequest = getRequest(question, headers, QuestionSetOperations.listQuestionSet.toString)
 		questionSetRequest.put("identifiers", questionSetRequest.get("identifier"))
 		setRequestContext(questionSetRequest, version, objectType, schemaName)
 		getResult(ApiId.LIST_QUESTIONSET, questionSetActor, questionSetRequest)
