@@ -63,6 +63,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def create(request: Request): Future[Response] = {
 		populateDefaultersForCreation(request)
 		RequestUtil.restrictProperties(request)
+		request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
 		DataNode.create(request, dataModifier).map(node => {
 			ResponseHandler.OK.put("identifier", node.getIdentifier).put("node_id", node.getIdentifier)
 				.put("versionKey", node.getMetadata.get("versionKey"))
@@ -136,6 +137,10 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		populateDefaultersForUpdation(request)
 		if (StringUtils.isBlank(request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String])) throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
 		RequestUtil.restrictProperties(request)
+		val status: String = request.getContext.getOrDefault("status", "").asInstanceOf[String]
+		if (status.equalsIgnoreCase("Draft")) {
+			request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		}
 		DataNode.update(request, dataModifier).map(node => {
 			val identifier: String = node.getIdentifier.replace(".img", "")
 			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
