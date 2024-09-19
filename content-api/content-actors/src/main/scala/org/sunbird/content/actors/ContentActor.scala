@@ -140,8 +140,12 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		populateDefaultersForUpdation(request)
 		if (StringUtils.isBlank(request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String])) throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
 		RequestUtil.restrictProperties(request)
-		request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		val reviewStatus: String = request.getContext.getOrDefault("reviewStatus", "").asInstanceOf[String]
 		logger.info("Inside the update method of content actor : " + request.toString)
+		if(reviewStatus == null ||  reviewStatus.isEmpty ) {
+			logger.info("i am inside if condition")
+			request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		}
 		DataNode.update(request, dataModifier).map(node => {
 			val identifier: String = node.getIdentifier.replace(".img", "")
 			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
