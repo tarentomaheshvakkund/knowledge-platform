@@ -25,6 +25,10 @@ object AssessmentManager {
 
 	def create(request: Request, errCode: String)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		val visibility: String = request.getRequest.getOrDefault("visibility", "").asInstanceOf[String]
+		val primaryCategory: String = request.getContext.getOrDefault("primaryCategory", "").asInstanceOf[String]
+		if (primaryCategory.equalsIgnoreCase("CQF Assessment")) {
+			request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		}
 		if (StringUtils.isNotBlank(visibility) && StringUtils.equalsIgnoreCase(visibility, "Parent"))
 			throw new ClientException(errCode, "Visibility cannot be Parent!")
 		DataNode.create(request).map(node => {

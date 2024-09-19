@@ -59,6 +59,11 @@ class QuestionSetActor @Inject()(implicit oec: OntologyEngineContext) extends Ba
 	}
 	def update(request: Request): Future[Response] = {
 		RequestUtil.restrictProperties(request)
+		val primaryCategory: String = request.getContext.getOrDefault("primaryCategory", "").asInstanceOf[String]
+		val status: String = request.getContext.getOrDefault("status", "").asInstanceOf[String]
+		if (primaryCategory.equalsIgnoreCase("CQF Assessment") && status.equalsIgnoreCase("Draft")) {
+			request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		}
 		request.getRequest.put("identifier", request.getContext.get("identifier"))
 		AssessmentManager.getValidatedNodeForUpdate(request, "ERR_QUESTION_SET_UPDATE").flatMap(_ => AssessmentManager.updateNode(request))
 	}
