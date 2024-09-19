@@ -1,9 +1,9 @@
 package org.sunbird.actors
 
 import java.util
-
 import javax.inject.Inject
 import org.apache.commons.collections4.CollectionUtils
+import org.apache.commons.lang3.StringUtils
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
@@ -12,10 +12,12 @@ import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.dac.model.Node
+import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 import org.sunbird.managers.{AssessmentManager, HierarchyManager, UpdateHierarchyManager}
 import org.sunbird.utils.RequestUtil
 
+import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -40,9 +42,21 @@ class QuestionSetActor @Inject()(implicit oec: OntologyEngineContext) extends Ba
 		case "rejectQuestionSet" => reject(request)
 		case "importQuestionSet" => importQuestionSet(request)
 		case "systemUpdateQuestionSet" => systemUpdate(request)
+		case "listQuestionSet" => listQuestionSet(request)
 		case _ => ERROR(request.getOperation)
 	}
 
+	def listQuestionSet(request: Request): Future[Response] = {
+		RequestUtil.validateListRequest(request)
+		val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+		request.getRequest.put("fields", fields)
+		DataNode.search(request).map(nodeList => {
+			val questionList = nodeList.map(node => {
+				NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("Image", ""), request.getContext.get("version").asInstanceOf[String])
+			}).asJava
+			ResponseHandler.OK.put("questionSets", questionList).put("count", questionList.size)
+		})
+	}
 	def update(request: Request): Future[Response] = {
 		RequestUtil.restrictProperties(request)
 		request.getRequest.put("identifier", request.getContext.get("identifier"))

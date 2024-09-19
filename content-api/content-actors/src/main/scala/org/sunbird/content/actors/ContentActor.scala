@@ -4,10 +4,12 @@ import java.util
 import java.util.concurrent.CompletionException
 import java.io.File
 import org.apache.commons.io.FilenameUtils
+
 import javax.inject.Inject
 import org.apache.commons.lang3.ObjectUtils
 import org.apache.commons.lang3.StringUtils
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
+import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
@@ -36,6 +38,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	implicit val ec: ExecutionContext = getContext().dispatcher
 	private lazy val importConfig = getImportConfig()
 	private lazy val importMgr = new ImportManager(importConfig)
+	private val logger: Logger = LoggerFactory.getLogger("ContentActor")
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -63,6 +66,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def create(request: Request): Future[Response] = {
 		populateDefaultersForCreation(request)
 		RequestUtil.restrictProperties(request)
+		request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
 		DataNode.create(request, dataModifier).map(node => {
 			ResponseHandler.OK.put("identifier", node.getIdentifier).put("node_id", node.getIdentifier)
 				.put("versionKey", node.getMetadata.get("versionKey"))
@@ -136,6 +140,10 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		populateDefaultersForUpdation(request)
 		if (StringUtils.isBlank(request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String])) throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
 		RequestUtil.restrictProperties(request)
+		val reviewStatus: String = request.getRequest.getOrDefault("reviewStatus", "").asInstanceOf[String]
+		if(reviewStatus == null ||  reviewStatus.isEmpty ) {
+			request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+		}
 		DataNode.update(request, dataModifier).map(node => {
 			val identifier: String = node.getIdentifier.replace(".img", "")
 			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
