@@ -113,6 +113,7 @@ POST      /event/v4/publish/:identifier             controllers.v4.EventControll
 GET       /event/v4/read/:identifier                controllers.v4.EventController.read(identifier:String, mode:Option[String], fields:Option[String])
 DELETE    /event/v4/discard/:identifier             controllers.v4.EventController.discard(identifier:String)
 DELETE    /private/event/v4/retire/:identifier      controllers.v4.EventController.retire(identifier:String)
+POST      /event/v4/reject/:identifier              controllers.v4.EventController.reviewReject(identifier:String)
 
 # EventSet v4 Api's
 POST    /eventset/v4/create                      controllers.v4.EventSetController.create

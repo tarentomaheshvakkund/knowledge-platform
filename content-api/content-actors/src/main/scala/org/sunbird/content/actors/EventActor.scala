@@ -11,6 +11,7 @@ import org.sunbird.graph.dac.model.{Node, Relation}
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.telemetry.logger.TelemetryManager
 import org.sunbird.telemetry.util.LogTelemetryEventUtil
+import org.sunbird.util.RequestUtil
 
 import java.util
 import javax.inject.Inject
@@ -31,6 +32,7 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
       case "retireContent" => retire(request)
       case "discardContent" => discard(request)
       case "publishContent" => publish(request)
+      case "rejectEvent" => rejectEvent(request)
       case _ => ERROR(request.getOperation)
     }
   }
@@ -116,4 +118,26 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
 		(actor, context, objData, eData)
 	}
 
+  def rejectEvent(request: Request): Future[Response] = {
+    RequestUtil.validateRequest(request)
+    DataNode.read(request).map(node => {
+      val status = node.getMetadata.get("status").asInstanceOf[String]
+      if (StringUtils.isBlank(status)) {
+        throw new ClientException("ERR_METADATA_ISSUE", "Event metadata error, status is blank for identifier:" + node.getIdentifier)
+      }
+      if (StringUtils.equals("sentToPublish", status) || StringUtils.equalsIgnoreCase("sentToPublish",status)) {
+        request.getRequest.put("status", "Rejected")
+        request.getRequest.put("prevStatus", "sentToPublish")
+      }
+
+      else new ClientException("ERR_INVALID_REQUEST", "Content not in Review status.")
+      request.getRequest.put("versionKey", node.getMetadata.get("versionKey"))
+      request.putIn("publishChecklist", null).putIn("publishComment", null)
+      RequestUtil.restrictProperties(request)
+      DataNode.update(request).map(node => {
+        val identifier: String = node.getIdentifier.replace(".img", "")
+        ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
+      })
+    }).flatMap(f => f)
+  }
 }

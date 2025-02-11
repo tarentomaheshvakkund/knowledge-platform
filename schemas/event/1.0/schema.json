@@ -36,7 +36,10 @@
             "enum": [
                 "Draft",
                 "Live",
-                "Retired"
+                "Retired",
+                "SentToPublish",
+                "Rejected",
+                "Cancelled"
             ],
             "default": "Draft"
         },
