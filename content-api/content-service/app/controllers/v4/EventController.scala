@@ -44,7 +44,7 @@ class EventController @Inject()(@Named(ActorNames.EVENT_ACTOR) eventActor: Actor
         val headers = commonHeaders()
         val body = requestBody()
         val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
-        if (content.containsKey("status") && content.get("status").equals("Live")) {
+        if (content.containsKey("status") && "Live".equals(content.get("status").toString)) {
             getErrorResponse(ApiId.UPDATE_EVENT, apiVersion, "VALIDATION_ERROR", "status update is restricted, use status APIs.")
         } else {
             content.putAll(headers)
