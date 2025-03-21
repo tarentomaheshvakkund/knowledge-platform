@@ -5,6 +5,7 @@ import java.util.Optional
 import java.util.concurrent.CompletionException
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
+import org.slf4j.LoggerFactory
 import org.sunbird.common.DateUtils
 import org.sunbird.common.dto.{Request, Response}
 import org.sunbird.common.exception.{ClientException, ErrorCodes, ResponseCode}
@@ -22,6 +23,7 @@ import scala.concurrent.{ExecutionContext, Future}
 object DataNode {
 
   private val SYSTEM_UPDATE_ALLOWED_CONTENT_STATUS = List("Live", "Unlisted")
+  private val logger = LoggerFactory.getLogger(this.getClass)
 
     @throws[Exception]
     def create(request: Request, dataModifier: (Node) => Node = defaultDataModifier)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
@@ -36,20 +38,37 @@ object DataNode {
         }).flatMap(f => f)
     }
 
-    @throws[Exception]
-    def update(request: Request, dataModifier: (Node) => Node = defaultDataModifier)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
-        val identifier: String = request.getContext.get("identifier").asInstanceOf[String]
-        DefinitionNode.validate(identifier, request).map(node => {
-            request.getContext().put("schemaName", node.getObjectType.toLowerCase.replace("image", ""))
-            val response = oec.graphService.upsertNode(request.graphId, dataModifier(node), request)
-            response.map(node => DefinitionNode.postProcessor(request, node)).map(result => {
-                val futureList = Task.parallel[Response](
-                    updateExternalProperties(node.getIdentifier, node.getExternalData, request.getContext, request.getObjectType, request),
-                    updateRelations(request.graphId, node, request.getContext))
-                futureList.map(list => result)
-            }).flatMap(f => f)  recoverWith { case e: CompletionException => throw e.getCause}
-        }).flatMap(f => f) recoverWith { case e: CompletionException => throw e.getCause}
+  @throws[Exception]
+  def update(request: Request, dataModifier: (Node) => Node = defaultDataModifier)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
+    logger.info("Starting update method")
+    val identifier: String = request.getContext.get("identifier").asInstanceOf[String]
+    logger.info(s"Extracted identifier: $identifier")
+    DefinitionNode.validate(identifier, request).map(node => {
+      logger.info(s"Validated node: ${node.getIdentifier}")
+      request.getContext().put("schemaName", node.getObjectType.toLowerCase.replace("image", ""))
+      logger.info(s"Set schemaName in context: ${request.getContext.get("schemaName")}")
+      val response = oec.graphService.upsertNode(request.graphId, dataModifier(node), request)
+      logger.info("Called upsertNode on graphService")
+      response.map(node => {
+        logger.info(s"Node upserted: ${node.getIdentifier}")
+        DefinitionNode.postProcessor(request, node)
+      }).map(result => {
+        logger.info("Post-processed node")
+        val futureList = Task.parallel[Response](
+          updateExternalProperties(node.getIdentifier, node.getExternalData, request.getContext, request.getObjectType, request),
+          updateRelations(request.graphId, node, request.getContext)
+        )
+        logger.info("Called updateExternalProperties and updateRelations in parallel")
+        futureList.map(list => result)
+      }).flatMap(f => f) recoverWith { case e: CompletionException =>
+        logger.error("Exception occurred during update", e)
+        throw e.getCause
+      }
+    }).flatMap(f => f) recoverWith { case e: CompletionException =>
+      logger.error("Exception occurred during validation", e)
+      throw e.getCause
     }
+  }
 
     @throws[Exception]
     def read(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {

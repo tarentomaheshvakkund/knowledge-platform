@@ -2,9 +2,9 @@ package org.sunbird.graph.schema
 
 import java.util
 import java.util.concurrent.CompletionException
-
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
+import org.slf4j.LoggerFactory
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.JsonUtils
 import org.sunbird.common.dto.Request
@@ -16,7 +16,9 @@ import scala.concurrent.{ExecutionContext, Future}
 
 object DefinitionNode {
 
-    def validate(request: Request, setDefaultValue: Boolean = true)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
+  private val logger = LoggerFactory.getLogger(this.getClass)
+
+  def validate(request: Request, setDefaultValue: Boolean = true)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
       val graphId: String = request.getContext.get("graph_id").asInstanceOf[String]
       val version: String = request.getContext.get("version").asInstanceOf[String]
       val schemaName: String = request.getContext.get("schemaName").asInstanceOf[String]
@@ -76,41 +78,57 @@ object DefinitionNode {
 
     @throws[Exception]
     def validate(identifier: String, request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
-        val graphId: String = request.getContext.get("graph_id").asInstanceOf[String]
-        val version: String = request.getContext.get("version").asInstanceOf[String]
-        val schemaName: String = request.getContext.get("schemaName").asInstanceOf[String].replaceAll("image", "")
-        val reqVersioning: String = request.getContext.getOrDefault("versioning", "").asInstanceOf[String]
-        val versioning = if(StringUtils.isBlank(reqVersioning)) None else Option(reqVersioning)
-	      val req:util.HashMap[String, AnyRef] = new util.HashMap[String, AnyRef](request.getRequest)
-        val skipValidation: Boolean = {if(request.getContext.containsKey("skipValidation")) request.getContext.get("skipValidation").asInstanceOf[Boolean] else false}
-        val definition = DefinitionFactory.getDefinition(graphId, schemaName, version)
-        definition.getNode(identifier, "update", null, versioning).map(dbNode => {
-            val schema = dbNode.getObjectType.toLowerCase.replace("image", "")
-            val primaryCategory: String = if(null != dbNode.getMetadata) dbNode.getMetadata.getOrDefault("primaryCategory", "").asInstanceOf[String] else ""
-            val objectCategoryDefinition: ObjectCategoryDefinition = getObjectCategoryDefinition(primaryCategory, schema, request.getContext.getOrDefault("channel", "all").asInstanceOf[String])
-            val categoryDefinition = DefinitionFactory.getDefinition(graphId, schema, version, objectCategoryDefinition)
-            categoryDefinition.validateRequest(request)
-            resetJsonProperties(dbNode, graphId, version, schema, objectCategoryDefinition)
-            val inputNode: Node = categoryDefinition.getNode(dbNode.getIdentifier, request.getRequest, dbNode.getNodeType)
-            val dbRels = getDBRelations(graphId, schema, version, req, dbNode, objectCategoryDefinition)
-            setRelationship(dbNode, inputNode, dbRels)
-            if (dbNode.getIdentifier.endsWith(".img") && StringUtils.equalsAnyIgnoreCase("Yes", dbNode.getMetadata.getOrDefault("isImageNodeCreated", "").asInstanceOf[String])) {
-                inputNode.getMetadata.put("versionKey", dbNode.getMetadata.getOrDefault("versionKey", ""))
-                dbNode.getMetadata.remove("isImageNodeCreated")
-            }
-            dbNode.getMetadata.putAll(inputNode.getMetadata)
-            if (MapUtils.isNotEmpty(inputNode.getExternalData)) {
-                if (MapUtils.isNotEmpty(dbNode.getExternalData))
-                    dbNode.getExternalData.putAll(inputNode.getExternalData)
-                else
-                    dbNode.setExternalData(inputNode.getExternalData)
-            }
-            
-            if (!skipValidation)
-                categoryDefinition.validate(dbNode, "update")
-            else Future (dbNode)
-
-        }).flatMap(f => f)
+      logger.info("Starting validate method")
+      val graphId: String = request.getContext.get("graph_id").asInstanceOf[String]
+      logger.info(s"Extracted graphId: $graphId")
+      val version: String = request.getContext.get("version").asInstanceOf[String]
+      logger.info(s"Extracted version: $version")
+      val schemaName: String = request.getContext.get("schemaName").asInstanceOf[String].replaceAll("image", "")
+      logger.info(s"Extracted schemaName: $schemaName")
+      val reqVersioning: String = request.getContext.getOrDefault("versioning", "").asInstanceOf[String]
+      val versioning = if (StringUtils.isBlank(reqVersioning)) None else Option(reqVersioning)
+      logger.info(s"Determined versioning: $versioning")
+      val req: util.HashMap[String, AnyRef] = new util.HashMap[String, AnyRef](request.getRequest)
+      val skipValidation: Boolean = if (request.getContext.containsKey("skipValidation")) request.getContext.get("skipValidation").asInstanceOf[Boolean] else false
+      logger.info(s"Skip validation: $skipValidation")
+      val definition = DefinitionFactory.getDefinition(graphId, schemaName, version)
+      logger.info("Retrieved definition")
+      definition.getNode(identifier, "update", null, versioning).map(dbNode => {
+        logger.info(s"Retrieved node: ${dbNode.getIdentifier}")
+        val schema = dbNode.getObjectType.toLowerCase.replace("image", "")
+        val primaryCategory: String = if (null != dbNode.getMetadata) dbNode.getMetadata.getOrDefault("primaryCategory", "").asInstanceOf[String] else ""
+        val objectCategoryDefinition: ObjectCategoryDefinition = getObjectCategoryDefinition(primaryCategory, schema, request.getContext.getOrDefault("channel", "all").asInstanceOf[String])
+        val categoryDefinition = DefinitionFactory.getDefinition(graphId, schema, version, objectCategoryDefinition)
+        logger.info("Retrieved category definition")
+        categoryDefinition.validateRequest(request)
+        logger.info("Validated request")
+        resetJsonProperties(dbNode, graphId, version, schema, objectCategoryDefinition)
+        logger.info("Reset JSON properties")
+        val inputNode: Node = categoryDefinition.getNode(dbNode.getIdentifier, request.getRequest, dbNode.getNodeType)
+        val dbRels = getDBRelations(graphId, schema, version, req, dbNode, objectCategoryDefinition)
+        setRelationship(dbNode, inputNode, dbRels)
+        logger.info("Set relationships")
+        if (dbNode.getIdentifier.endsWith(".img") && StringUtils.equalsAnyIgnoreCase("Yes", dbNode.getMetadata.getOrDefault("isImageNodeCreated", "").asInstanceOf[String])) {
+          inputNode.getMetadata.put("versionKey", dbNode.getMetadata.getOrDefault("versionKey", ""))
+          dbNode.getMetadata.remove("isImageNodeCreated")
+          logger.info("Updated image node metadata")
+        }
+        dbNode.getMetadata.putAll(inputNode.getMetadata)
+        if (MapUtils.isNotEmpty(inputNode.getExternalData)) {
+          if (MapUtils.isNotEmpty(dbNode.getExternalData))
+            dbNode.getExternalData.putAll(inputNode.getExternalData)
+          else
+            dbNode.setExternalData(inputNode.getExternalData)
+          logger.info("Updated external data")
+        }
+        if (!skipValidation) {
+          logger.info("Validating node")
+          categoryDefinition.validate(dbNode, "update")
+        } else {
+          logger.info("Skipping validation")
+          Future(dbNode)
+        }
+      }).flatMap(f => f)
     }
 
 	def postProcessor(request: Request, node: Node)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Node = {

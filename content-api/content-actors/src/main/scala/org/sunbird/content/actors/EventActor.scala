@@ -1,6 +1,7 @@
 package org.sunbird.content.actors
 
 import org.apache.commons.lang.StringUtils
+import org.slf4j.LoggerFactory
 import org.sunbird.common.Platform
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
@@ -17,7 +18,6 @@ import java.util
 import javax.inject.Inject
 import scala.collection.JavaConverters.asScalaBufferConverter
 import scala.concurrent.Future
-
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters
 import scala.collection.JavaConverters._
@@ -37,24 +37,35 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
     }
   }
 
-  override def update(request: Request): Future[Response] = {
-      populateDefaultersForUpdation(request)
-      val versionKey = request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String]
-      if (StringUtils.isBlank(versionKey)) {
-        throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
-      }
-      RequestUtil.restrictProperties(request)
-      val reviewStatus: String = request.getRequest.getOrDefault("reviewStatus", "").asInstanceOf[String]
-      if (reviewStatus == null || reviewStatus.isEmpty) {
+  private val logger = LoggerFactory.getLogger(classOf[EventActor])
 
-        request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
-      }
-      DataNode.update(request, dataModifier).map(node => {
-        val identifier: String = node.getIdentifier.replace(".img", "")
-        ResponseHandler.OK.put("node_id", identifier)
-          .put("identifier", identifier)
-          .put("versionKey", node.getMetadata.get("versionKey"))
-      })
+
+  override def update(request: Request): Future[Response] = {
+    logger.info("Starting update method")
+    populateDefaultersForUpdation(request)
+    logger.info("Completed populateDefaultersForUpdation")
+    val versionKey = request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String]
+    logger.info(s"Extracted versionKey: $versionKey")
+    if (StringUtils.isBlank(versionKey)) {
+      logger.info("Version key is blank, throwing ClientException")
+      throw new ClientException("ERR_INVALID_REQUEST", "Please Provide Version Key!")
+    }
+    RequestUtil.restrictProperties(request)
+    logger.info("Completed RequestUtil.restrictProperties")
+    val reviewStatus: String = request.getRequest.getOrDefault("reviewStatus", "").asInstanceOf[String]
+    logger.info(s"Extracted reviewStatus: $reviewStatus")
+    if (reviewStatus == null || reviewStatus.isEmpty) {
+      logger.info("Review status is null or empty, setting cqfVersion")
+      request.getRequest.put("cqfVersion", System.currentTimeMillis().toString)
+    }
+    logger.info("Calling DataNode.update")
+    DataNode.update(request, dataModifier).map(node => {
+      val identifier: String = node.getIdentifier.replace(".img", "")
+      ResponseHandler.OK.put("node_id", identifier)
+        .put("identifier", identifier)
+        .put("versionKey", node.getMetadata.get("versionKey"))
+    })
+
   }
 
   def publish(request: Request): Future[Response] = {
