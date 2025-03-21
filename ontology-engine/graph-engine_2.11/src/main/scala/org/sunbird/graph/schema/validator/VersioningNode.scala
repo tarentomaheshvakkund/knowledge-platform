@@ -1,8 +1,9 @@
 package org.sunbird.graph.schema.validator
 
+import org.slf4j.LoggerFactory
+
 import java.util
 import java.util.concurrent.CompletionException
-
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.{DateUtils, JsonUtils, Platform}
 import org.sunbird.common.dto.{Request, ResponseHandler}
@@ -27,6 +28,7 @@ trait VersioningNode extends IDefinition {
     val IMAGE_OBJECT_SUFFIX = "Image"
     val COLLECTION_MIME_TYPE = "application/vnd.ekstep.content-collection"
 
+    private val logger = LoggerFactory.getLogger(this.getClass)
 
     abstract override def getNode(identifier: String, operation: String, mode: String = "read", versioning: Option[String] = None)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
         operation match {
@@ -36,16 +38,26 @@ trait VersioningNode extends IDefinition {
         }
     }
 
+
     private def getNodeToUpdate(identifier: String, versioning: Option[String] = None)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Node] = {
-        val nodeFuture: Future[Node] = super.getNode(identifier , "update", null)
+        logger.info(s"Starting getNodeToUpdate for identifier: $identifier with versioning: $versioning")
+        val nodeFuture: Future[Node] = super.getNode(identifier, "update", null)
         nodeFuture.map(node => {
-            val versioningEnable = versioning.getOrElse({if(schemaValidator.getConfig.hasPath("version"))schemaValidator.getConfig.getString("version") else "disable"})
-            if(null == node)
-                throw new ResourceNotFoundException(GraphErrorCodes.ERR_INVALID_NODE.toString, "Node Not Found With Identifier : " + identifier)
-            else if("enable".equalsIgnoreCase(versioningEnable))
+            logger.info(s"Retrieved node for identifier: $identifier")
+            val versioningEnable = versioning.getOrElse({
+                if (schemaValidator.getConfig.hasPath("version")) schemaValidator.getConfig.getString("version") else "disable"
+            })
+            logger.info(s"Versioning enabled: $versioningEnable")
+            if (null == node) {
+                logger.error(s"Node not found for identifier: $identifier")
+                throw new ResourceNotFoundException(GraphErrorCodes.ERR_INVALID_NODE.toString, s"Node Not Found With Identifier: $identifier")
+            } else if ("enable".equalsIgnoreCase(versioningEnable)) {
+                logger.info(s"Versioning is enabled for identifier: $identifier, getting editable node")
                 getEditableNode(identifier, node)
-            else
-                Future{node}
+            } else {
+                logger.info(s"Versioning is disabled for identifier: $identifier, returning node as is")
+                Future { node }
+            }
         }).flatMap(f => f)
     }
 
