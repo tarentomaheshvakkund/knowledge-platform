@@ -83,37 +83,53 @@ trait VersioningNode extends IDefinition {
     }
 
     private def getEditableNode(identifier: String, node: Node)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
+        logger.info(s"Starting getEditableNode for identifier: $identifier")
         val status = node.getMetadata.get("status").asInstanceOf[String]
-        if(statusList.contains(status)) {
+        logger.info(s"Node status: $status")
+        if (statusList.contains(status)) {
             val imageId = node.getIdentifier + IMAGE_SUFFIX
-            try{
+            logger.info(s"Image ID: $imageId")
+            try {
                 val imageNode = oec.graphService.getNodeByUniqueId(node.getGraphId, imageId, false, new Request())
                 imageNode recoverWith {
-                    case e: CompletionException => {
+                    case e: CompletionException =>
                         TelemetryManager.error("Exception occurred while fetching image node, may not be found", e.getCause)
+                        logger.error("Exception occurred while fetching image node", e.getCause)
+
                         if (e.getCause.isInstanceOf[ResourceNotFoundException]) {
+                            logger.info(s"Image node not found, creating new image node for identifier: $identifier")
+
                             node.setIdentifier(imageId)
                             node.setObjectType(node.getObjectType + IMAGE_OBJECT_SUFFIX)
                             node.getMetadata.put("status", "Draft")
                             node.getMetadata.put("prevStatus", status)
                             node.getMetadata.put(AuditProperties.lastStatusChangedOn.name, DateUtils.formatCurrentDate())
-                            oec.graphService.addNode(node.getGraphId, node).map(imgNode => {
-                                imgNode.getMetadata.put("isImageNodeCreated", "yes");
-                                copyExternalProps(identifier, node.getGraphId, imgNode.getObjectType.toLowerCase().replace("image", "")).map(response => {
-                                    if(!ResponseHandler.checkError(response)) {
-                                        if(null != response.getResult && !response.getResult.isEmpty)
+
+                            oec.graphService.addNode(node.getGraphId, node).map { imgNode =>
+                                logger.info(s"Image node created with identifier: ${imgNode.getIdentifier}")
+
+                                imgNode.getMetadata.put("isImageNodeCreated", "yes")
+                                copyExternalProps(identifier, node.getGraphId, imgNode.getObjectType.toLowerCase().replace("image", "")).map { response =>
+                                    if (!ResponseHandler.checkError(response)) {
+                                        if (null != response.getResult && !response.getResult.isEmpty)
                                             imgNode.setExternalData(response.getResult)
                                     }
                                     imgNode
-                                })
-                            }).flatMap(f=>f)
-                        } else
+                                }
+                            }.flatMap(f => f)
+                        } else {
                             throw e.getCause
-                    }
+                        }
                 }
+            } catch {
+                case e: Exception =>
+                    logger.error("Unexpected exception occurred", e)
+                    throw e
             }
-        } else
-            Future{node}
+        } else {
+            logger.info(s"Node status is not in the status list, returning node as is for identifier: $identifier")
+            Future { node }
+        }
     }
 
     private def copyExternalProps(identifier: String, graphId: String, schemaName: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext) = {
