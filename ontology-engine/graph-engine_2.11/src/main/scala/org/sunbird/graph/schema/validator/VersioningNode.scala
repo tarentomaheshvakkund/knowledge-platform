@@ -109,7 +109,7 @@ trait VersioningNode extends IDefinition {
                                 logger.info(s"Image node created with identifier: ${imgNode.getIdentifier}")
                                 imgNode.getMetadata.put("isImageNodeCreated", "yes")
                                 val category = node.getMetadata.get("category").asInstanceOf[String]
-                                if (category.equalsIgnoreCase("event")) {
+                                if (!category.equalsIgnoreCase("event")) {
                                     copyExternalProps(identifier, node.getGraphId, imgNode.getObjectType.toLowerCase().replace("image", "")).map { response =>
                                         if (!ResponseHandler.checkError(response)) {
                                             if (null != response.getResult && !response.getResult.isEmpty)
