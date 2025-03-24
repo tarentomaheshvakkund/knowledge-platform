@@ -107,14 +107,18 @@ trait VersioningNode extends IDefinition {
 
                             oec.graphService.addNode(node.getGraphId, node).map { imgNode =>
                                 logger.info(s"Image node created with identifier: ${imgNode.getIdentifier}")
-
                                 imgNode.getMetadata.put("isImageNodeCreated", "yes")
-                                copyExternalProps(identifier, node.getGraphId, imgNode.getObjectType.toLowerCase().replace("image", "")).map { response =>
-                                    if (!ResponseHandler.checkError(response)) {
-                                        if (null != response.getResult && !response.getResult.isEmpty)
-                                            imgNode.setExternalData(response.getResult)
+                                val category = node.getMetadata.get("category").asInstanceOf[String]
+                                if (category.equalsIgnoreCase("event")) {
+                                    copyExternalProps(identifier, node.getGraphId, imgNode.getObjectType.toLowerCase().replace("image", "")).map { response =>
+                                        if (!ResponseHandler.checkError(response)) {
+                                            if (null != response.getResult && !response.getResult.isEmpty)
+                                                imgNode.setExternalData(response.getResult)
+                                        }
+                                        imgNode
                                     }
-                                    imgNode
+                                } else {
+                                    Future.successful(imgNode)
                                 }
                             }.flatMap(f => f)
                         } else {
