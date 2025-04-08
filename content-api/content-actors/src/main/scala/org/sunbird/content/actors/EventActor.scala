@@ -1,11 +1,13 @@
 package org.sunbird.content.actors
 
-import org.apache.commons.lang.StringUtils
+
+import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
 import org.sunbird.common.Platform
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResponseCode}
+import org.sunbird.content.review.mgr.ReviewManager
 import org.sunbird.content.util.ContentConstants
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.{Node, Relation}
@@ -33,6 +35,7 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
       case "discardContent" => discard(request)
       case "publishContent" => publish(request)
       case "rejectEvent" => rejectEvent(request)
+      case "reviewEvent" => reviewEvent(request)
       case _ => ERROR(request.getOperation)
     }
   }
@@ -82,27 +85,35 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
   }
 
   private def verifyStandaloneEventAndApply(f: Request => Future[Response], request: Request, isPublish: Boolean = false, dataUpdater: Option[Node => Unit] = None): Future[Response] = {
+    logger.info("Starting verifyStandaloneEventAndApply method")
     DataNode.read(request).flatMap(node => {
-      val inRelations = if (node.getInRelations == null) new util.ArrayList[Relation]() else node.getInRelations;
+      logger.info(s"Read node with identifier: ${node.getIdentifier}")
+      val inRelations = if (node.getInRelations == null) new util.ArrayList[Relation]() else node.getInRelations
       val hasEventSetParent = inRelations.asScala.exists(rel => "EventSet".equalsIgnoreCase(rel.getStartNodeObjectType))
-      if (hasEventSetParent)
+      if (hasEventSetParent) {
+        logger.info(s"Node with identifier: ${node.getIdentifier} is part of an Event Set, cannot modify")
         Future(ResponseHandler.ERROR(ResponseCode.CLIENT_ERROR, ResponseCode.CLIENT_ERROR.name(), "ERROR: Can't modify an Event which is part of an Event Set!"))
-      else {
+      } else {
         if (dataUpdater.isDefined) {
+          logger.info(s"Applying dataUpdater to node with identifier: ${node.getIdentifier}")
           dataUpdater.get.apply(node)
         }
         f.apply(request).flatMap(response => {
+          logger.info(s"Applied function to request, response code: ${response.getResponseCode}")
           // Check if the response is OK
           if (response.getResponseCode == ResponseCode.OK) {
             if (isPublish) {
+              logger.info(s"Publishing event for identifier: ${request.getRequest.getOrDefault("identifier", "")}")
               TelemetryManager.log("EventActor::verifyStandaloneEventAndApply publish request for Identifier: " + request.getRequest.getOrDefault("identifier", ""))
               pushInstructionEvent(node.getIdentifier, node)
             } else {
+              logger.info(s"Processed request for identifier: ${request.getRequest.getOrDefault("identifier", "")}")
               TelemetryManager.log("EventActor::verifyStandaloneEventAndApply Identifier: " + request.getRequest.getOrDefault("identifier", ""))
             }
             Future.successful(response)
           } else {
             // Return the response if it's not OK as it is
+            logger.info(s"Response code is not OK, returning response as is for identifier: ${request.getRequest.getOrDefault("identifier", "")}")
             Future.successful(response)
           }
         })
@@ -165,6 +176,30 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
         val identifier: String = node.getIdentifier.replace(".img", "")
         ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
       })
+    }).flatMap(f => f)
+  }
+
+  def reviewEvent(request: Request): Future[Response] = {
+    logger.info("Starting reviewEvent method")
+    val identifier: String = request.getContext.getOrDefault("identifier", "").asInstanceOf[String]
+    logger.info(s"Extracted identifier: $identifier")
+    val readReq = new Request(request)
+    readReq.put("identifier", identifier)
+    readReq.put("mode", "edit")
+    logger.info(s"Created read request with identifier: $identifier and mode: edit")
+    DataNode.read(readReq).map(node => {
+      logger.info(s"Read node with identifier: ${node.getIdentifier}")
+      if (null != node && StringUtils.isNotBlank(node.getObjectType)) {
+        request.getContext.put("schemaName", node.getObjectType.toLowerCase())
+        logger.info(s"Set schemaName in context: ${node.getObjectType.toLowerCase()}")
+      }
+      if (StringUtils.equalsAnyIgnoreCase("Processing", node.getMetadata.getOrDefault("status", "").asInstanceOf[String])) {
+        logger.info(s"Node is in Processing state, throwing ClientException")
+        throw new ClientException("ERR_NODE_ACCESS_DENIED", "Review Operation Can't Be Applied On Node Under Processing State")
+      } else {
+        logger.info(s"Node is not in Processing state, proceeding with review")
+        ReviewManager.review(request, node)
+      }
     }).flatMap(f => f)
   }
 }

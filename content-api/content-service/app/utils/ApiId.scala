@@ -101,4 +101,5 @@ object ApiId {
 	val EXPORT_CSV = "api.collection.export"
 
 	val REJECT_EVENT = "api.event.review.reject"
+	val REVIEW_EVENT = "api.event.review.event"
 }

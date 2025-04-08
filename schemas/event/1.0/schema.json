@@ -35,6 +35,7 @@
             "type": "string",
             "enum": [
                 "Draft",
+                "Review",
                 "Live",
                 "Retired",
                 "SentToPublish",
@@ -238,6 +239,10 @@
         },
         "depth": {
             "type": "number"
+        },
+        "artifactUrl": {
+            "type": "string",
+            "default": ""
         }
     }
 }

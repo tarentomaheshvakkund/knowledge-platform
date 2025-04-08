@@ -88,4 +88,15 @@ class EventController @Inject()(@Named(ActorNames.EVENT_ACTOR) eventActor: Actor
         contentRequest.getContext.put("identifier", identifier);
         getResult(ApiId.REJECT_EVENT, eventActor, contentRequest, version = apiVersion)
     }
+
+    override  def review(identifier: String) = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault("event", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        content.putAll(headers)
+        val contentRequest = getRequest(content, headers, "reviewEvent")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        contentRequest.getContext.put("identifier", identifier);
+        getResult(ApiId.REVIEW_EVENT, eventActor, contentRequest)
+    }
 }
