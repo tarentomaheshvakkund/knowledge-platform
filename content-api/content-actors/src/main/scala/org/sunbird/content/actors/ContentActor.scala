@@ -282,7 +282,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			else {
 				val response = ReviewManager.review(request, node)
 				try {
-					NotificationManager.sendNotification("CONTENT_REVIEW_REQUEST", "ALERT", List(node.getMetadata.get("reviewer").toString), node.getMetadata.get("name").toString, Map.empty)
+					NotificationManager.sendNotification(
+						"CONTENT_REVIEW_REQUEST",
+						"ALERT",
+						List(node.getMetadata.get("reviewer").asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]),
+						node.getMetadata.get("name").asInstanceOf[String],
+						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+					)
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
@@ -376,7 +382,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				DataNode.systemUpdate(request, response,"", None)
 		}).map(node => {
 			try {
-				NotificationManager.sendNotification("CONTENT_EDITED", "UPDATE", List(node.getMetadata.get("createdBy").toString), node.getMetadata.get("name").toString, Map.empty)
+				NotificationManager.sendNotification(
+					"CONTENT_EDITED",
+					"UPDATE",
+					List(node.getMetadata.get("createdBy").asInstanceOf[String]),
+					node.getMetadata.get("name").asInstanceOf[String],
+					Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+				)
 			} catch {
 				case e: Exception => logger.info("Error while sending notification ", e)
 			}
@@ -406,7 +418,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			DataNode.update(request).map(node => {
 				val identifier: String = node.getIdentifier.replace(".img", "")
 				try {
-					NotificationManager.sendNotification("CONTENT_REJECTED", "UPDATE", List(node.getMetadata.get("createdBy").toString), node.getMetadata.get("name").toString, Map.empty)
+					NotificationManager.sendNotification(
+						"CONTENT_REJECTED",
+						"UPDATE",
+						List(node.getMetadata.get("createdBy").asInstanceOf[String]),
+						node.getMetadata.get("name").asInstanceOf[String],
+						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+					)
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}

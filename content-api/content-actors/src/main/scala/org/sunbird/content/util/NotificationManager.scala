@@ -10,7 +10,7 @@ object NotificationManager {
 
   private val logger: Logger = LoggerFactory.getLogger("NotificationManager")
 
-  def sendNotification(subCategory: String, subType: String, userIds: List[String], title: String, data: Map[String, Any]): Unit = {
+  def sendNotification(subCategory: String, subType: String, userIds: List[String], title: String, data: collection.Map[String, Any]): Unit = {
 
     logger.info("Notification construction started")
 
