@@ -285,7 +285,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
 						"ALERT",
-						List(node.getMetadata.get("reviewer").asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]),
+						node.getMetadata.get("reviewerIDs").asInstanceOf[java.util.List[String]].asScala.toList,
 						node.getMetadata.get("name").asInstanceOf[String],
 						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
 					)
