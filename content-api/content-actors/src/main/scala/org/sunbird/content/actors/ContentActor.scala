@@ -282,10 +282,15 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			else {
 				val response = ReviewManager.review(request, node)
 				try {
+					val reviewers = node.getMetadata.get("reviewerIDs") match {
+						case arr: Array[String] => arr.toList
+						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
+						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}")
+					}
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
 						"ALERT",
-						node.getMetadata.get("reviewerIDs").asInstanceOf[java.util.List[String]].asScala.toList,
+						reviewers,
 						node.getMetadata.get("name").asInstanceOf[String],
 						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
 					)
