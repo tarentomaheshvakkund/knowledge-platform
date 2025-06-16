@@ -423,13 +423,15 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			DataNode.update(request).map(node => {
 				val identifier: String = node.getIdentifier.replace(".img", "")
 				try {
-					NotificationManager.sendNotification(
-						"CONTENT_REJECTED",
-						"UPDATE",
-						List(node.getMetadata.get("createdBy").asInstanceOf[String]),
-						node.getMetadata.get("name").asInstanceOf[String],
-						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
-					)
+					if(node.getMetadata.containsKey("reviewerIDs")) {
+						NotificationManager.sendNotification(
+							"CONTENT_REJECTED",
+							"UPDATE",
+							List(node.getMetadata.get("createdBy").asInstanceOf[String]),
+							node.getMetadata.get("name").asInstanceOf[String],
+							Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+						)
+					}
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
