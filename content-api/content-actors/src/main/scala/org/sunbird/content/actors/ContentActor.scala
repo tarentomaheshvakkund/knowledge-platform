@@ -43,8 +43,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	private lazy val importConfig = getImportConfig()
 	private lazy val importMgr = new ImportManager(importConfig)
 	private val logger: Logger = LoggerFactory.getLogger("ContentActor")
-	// Remove mapper from final version
-	private val mapper = new ObjectMapper()
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -292,9 +290,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val readReq = new Request(request)
 		readReq.put("identifier", identifier)
 		readReq.put("mode", "edit")
-		println("ContentActor:: reviewContent:: readReq:: identifier:: " + identifier)
 		DataNode.read(readReq).map(node => {
-			println("ContentActor:: reviewContent:: Fetched node - metadata" + mapper.writeValueAsString(node.getMetadata))
 			if (null != node & StringUtils.isNotBlank(node.getObjectType))
 				request.getContext.put("schemaName", node.getObjectType.toLowerCase())
 			if (StringUtils.equalsAnyIgnoreCase("Processing", node.getMetadata.getOrDefault("status", "").asInstanceOf[String]))
@@ -307,13 +303,12 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
 						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}")
 					}
-					println("ContentActor:: reviewContent:: 2nd fetch node - metadata" + mapper.writeValueAsString(node.getMetadata))
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
 						"ALERT",
 						reviewers,
 						node.getMetadata.get("name").asInstanceOf[String],
-						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+						Map[String, Any]("id" -> identifier)
 					)
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
