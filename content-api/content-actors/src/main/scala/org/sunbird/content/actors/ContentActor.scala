@@ -1,5 +1,7 @@
 package org.sunbird.content.actors
 
+import com.fasterxml.jackson.databind.ObjectMapper
+
 import java.util
 import java.util.concurrent.CompletionException
 import java.io.File
@@ -41,6 +43,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	private lazy val importConfig = getImportConfig()
 	private lazy val importMgr = new ImportManager(importConfig)
 	private val logger: Logger = LoggerFactory.getLogger("ContentActor")
+	// Remove mapper from final version
+	private val mapper = new ObjectMapper()
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -301,6 +305,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
 						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}")
 					}
+					println("ContentActor:: reviewContent:: node - metadata" + mapper.writeValueAsString(node.getMetadata))
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
 						"ALERT",
