@@ -45,6 +45,7 @@ public class Node implements Serializable {
         this.metadata = metadata;
         if (null != metadata && !metadata.isEmpty()) {
             if (null != metadata.get(SystemProperties.IL_UNIQUE_ID.name()))
+                System.out.println("Node Java:: IL_UNIQUE_ID:: " + metadata.get(SystemProperties.IL_UNIQUE_ID.name()));
                 this.identifier = metadata.get(SystemProperties.IL_UNIQUE_ID.name()).toString();
             if (null != metadata.get(SystemProperties.IL_SYS_NODE_TYPE.name()))
                 this.nodeType = metadata.get(SystemProperties.IL_SYS_NODE_TYPE.name()).toString();
