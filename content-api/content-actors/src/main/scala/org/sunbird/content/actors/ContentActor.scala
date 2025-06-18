@@ -210,6 +210,20 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		}
 		DataNode.update(request, dataModifier).map(node => {
 			val identifier: String = node.getIdentifier.replace(".img", "")
+			if (request.getContext.getOrDefault("sendNotification", Boolean.box(false)).asInstanceOf[Boolean]) {
+				try {
+					NotificationManager.sendNotification(
+						"CONTENT_EDITED",
+						"UPDATE",
+						List(node.getMetadata.get("createdBy").asInstanceOf[String]),
+						node.getMetadata.get("name").asInstanceOf[String],
+						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+					)
+
+				} catch {
+					case e: Exception => logger.info("Error while sending notification ", e)
+				}
+			}
 			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
 				.put("versionKey", node.getMetadata.get("versionKey"))
 		})
@@ -301,6 +315,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			}
 		}).flatMap(f => f)
 	}
+
 
 	def populateDefaultersForCreation(request: Request) = {
 		setDefaultsBasedOnMimeType(request, ContentParams.create.name)
