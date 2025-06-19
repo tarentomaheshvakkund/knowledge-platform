@@ -22,7 +22,7 @@ object ReviewManager {
 			updateReq.setContext(request.getContext)
 			updateReq.putAll(result.asJava)
 			DataNode.update(updateReq).map(node => {
-				ResponseHandler.OK.putAll(Map("identifier" -> identifier, "versionKey" -> node.getMetadata.get("versionKey")).asJava)
+				ResponseHandler.OK.putAll(Map("identifier" -> node.getIdentifier.replace(".img", ""), "versionKey" -> node.getMetadata.get("versionKey")).asJava)
 			})
 		}).flatMap(f => f)
 	}

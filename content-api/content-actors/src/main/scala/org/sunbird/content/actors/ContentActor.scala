@@ -1,7 +1,5 @@
 package org.sunbird.content.actors
 
-import com.fasterxml.jackson.databind.ObjectMapper
-
 import java.util
 import java.util.concurrent.CompletionException
 import java.io.File
@@ -308,7 +306,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						"ALERT",
 						reviewers,
 						node.getMetadata.get("name").asInstanceOf[String],
-						Map[String, Any]("id" -> identifier)
+						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
 					)
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
