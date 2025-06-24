@@ -219,7 +219,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						"UPDATE",
 						List(node.getMetadata.get("createdBy").asInstanceOf[String]),
 						node.getMetadata.get("name").asInstanceOf[String],
-						Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+						Map[String, Any]("id" -> identifier)
 					)
 
 				} catch {
@@ -409,7 +409,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					"UPDATE",
 					List(node.getMetadata.get("createdBy").asInstanceOf[String]),
 					node.getMetadata.get("name").asInstanceOf[String],
-					Map[String, Any]("id" -> node.getMetadata.get("identifier").asInstanceOf[String])
+					Map[String, Any]("id" -> identifier)
 				)
 			} catch {
 				case e: Exception => logger.info("Error while sending notification ", e)
