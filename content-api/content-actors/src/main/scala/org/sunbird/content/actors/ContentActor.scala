@@ -63,6 +63,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "reviewContent" => reviewContent(request)
 			case "rejectContent" => rejectContent(request)
 			case "adminReadContent" => adminRead(request)
+			case "createMLContent" => createMLContent(request)
 			case _ => ERROR(request.getOperation)
 		}
 	}
@@ -472,6 +473,85 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			}
 			response
 		})
+	}
+
+	def createMLContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+		val collectionData = request.getRequest.get("collection").asInstanceOf[java.util.Map[String, AnyRef]]
+		val sourceCollectionId = collectionData.get("sourceCollectionId").asInstanceOf[String]
+		val languages = collectionData.get("language").asInstanceOf[java.util.List[String]]
+
+		val readRequest = new Request()
+		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+			put("graph_id", "domain")
+			put("version", "1.0")
+			put("objectType", "Content")
+			put("schemaName", "content")
+		}})
+		readRequest.setObjectType("Content")
+		readRequest.put("identifier", sourceCollectionId)
+		readRequest.put("mode", "read")
+		readRequest.put("fields", new util.ArrayList[String]())
+
+		DataNode.read(readRequest).flatMap { node =>
+			val metadata = node.getMetadata
+			val status = metadata.getOrDefault("status", "").asInstanceOf[String]
+			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
+			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
+			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
+			val languageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
+
+			// Validation
+			if (!StringUtils.equalsIgnoreCase(status, "Live"))
+			throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
+
+			val duplicateLang = languages.asScala.find(lang => languageMap.containsKey(lang.toLowerCase))
+			if (duplicateLang.nonEmpty)
+			throw new ClientException("ERR_LANGUAGE_ALREADY_EXISTS", s"Language ${duplicateLang.get} already exists in languageMapV1")
+
+			// Create new content for each language
+			val createFutures = languages.asScala.map { lang =>
+				val createReq = new Request()
+				createReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+					put("content", new java.util.HashMap[String, AnyRef]() {{
+					put("contentType", contentType)
+					put("mimeType", mimeType)
+					put("primaryCategory", "MultiLingual Course")
+					}})
+				}})
+				create(createReq).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
+			}
+
+			Future.sequence(createFutures).flatMap { createdMap =>
+				// Build updated languageMapV1
+				val updatedLanguageMap = new java.util.HashMap[String, AnyRef](languageMap)
+				val resultContent = new java.util.HashMap[String, AnyRef]()
+				createdMap.foreach { case (lang, id) =>
+					updatedLanguageMap.put(lang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
+					put("id", id)
+					put("status", "draft")
+					}})
+					resultContent.put(lang, id)
+				}
+
+				// Prepare and call systemUpdate
+				val updateReq = new Request()
+				updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+					put("content", new java.util.HashMap[String, AnyRef]() {{
+					put("languageMapV1", updatedLanguageMap)
+					put("versionKey", versionKey)
+					}})
+				}})
+				updateReq.setContext(request.getContext)
+				updateReq.put("identifier", sourceCollectionId)
+
+				systemUpdate(updateReq).map(_ => {
+					val response = ResponseHandler.OK()
+					response.setId("api.content.ml.create")
+					response.put("content", resultContent)
+					response
+				})
+			}
+		}
 	}
 
 }

@@ -219,4 +219,14 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         getResult(ApiId.READ_PRIVATE_CONTENT, contentActor, readRequest, version = apiVersion)
     }
 
+    def createMLContent() = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault(schemaName, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]];
+        content.putAll(headers)
+        val contentRequest = getRequest(content, headers, "createMLContent", true)
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        getResult(ApiId.CREATE_ML_CONTENT, contentActor, contentRequest, version = apiVersion)
+    }
+
 }
