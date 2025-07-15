@@ -517,7 +517,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("mimeType", mimeType)
 				contentMap.put("courseCategory", "MultiLingual Course")
 				contentMap.put("primaryCategory", "Course")
-				contentMap.put("language", util.Arrays.asList(lang))
+				contentMap.put("language", util.Arrays.asList(lang.capitalize))
+  			  	contentMap.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString) // 10-digit string
 
 				val languageMapV1 = new java.util.HashMap[String, AnyRef]()
 				languageMapV1.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
