@@ -476,9 +476,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	}
 
 	def createMLContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
-		val contentData = request.getRequest.get("content").asInstanceOf[java.util.Map[String, AnyRef]]
-		val sourceCollectionId = contentData.get("sourceCollectionId").asInstanceOf[String]
-		val languages = contentData.get("language").asInstanceOf[java.util.List[String]]
+		val sourceCollectionId = request.getRequest.get("sourceCollectionId").asInstanceOf[String]
+		val languages = request.getRequest.get("language").asInstanceOf[java.util.List[String]]
 
 		val readRequest = new Request()
 		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
