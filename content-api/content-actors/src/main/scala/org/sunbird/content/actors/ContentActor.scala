@@ -511,32 +511,40 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
     		val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
 
 			
-			// Create new content for each language
-			val createFutures = languages.asScala.map { lang =>
-				val createReq = new Request()
-				createReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
-					put("content", new java.util.HashMap[String, AnyRef]() {{
-						put("contentType", contentType)
-						put("mimeType", mimeType)
-						put("language", util.Arrays.asList(lang))
-						put("primaryCategory", "Course")
-						put("courseCategory", "MultiLingual Course")
-						put("languageMapV1", new java.util.HashMap[String, AnyRef]() {{
-							put(baseLang, new java.util.HashMap[String, AnyRef]() {{
-								put("id", sourceCollectionId)
-								put("isBaseLang", Boolean.box(true))
-								put("status", status)
-							}})
-						}})
-					}})
+			val createdFutures = languages.asScala.map { lang =>
+				val contentMap = new java.util.HashMap[String, AnyRef]()
+				contentMap.put("contentType", contentType)
+				contentMap.put("mimeType", mimeType)
+				contentMap.put("courseCategory", "MultiLingual Course")
+				contentMap.put("primaryCategory", "Course")
+				contentMap.put("language", util.Arrays.asList(lang))
+
+				val languageMapV1 = new java.util.HashMap[String, AnyRef]()
+				languageMapV1.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
+					put("id", sourceCollectionId)
+					put("isBaseLang", Boolean.box(true))
+					put("status", status)
 				}})
-				create(createReq).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
+				contentMap.put("languageMapV1", languageMapV1)
+
+				val headers = new java.util.HashMap[String, AnyRef]()
+				val createRequest = new Request()
+				createRequest.setOperation("createContent")
+				createRequest.setRequest(contentMap)
+				createRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+					put("graph_id", "domain")
+					put("version", "1.0")
+					put("objectType", "Content")
+					put("schemaName", "content")
+				}})
+
+				create(createRequest).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
 			}
 
-			Future.sequence(createFutures).flatMap { createdMap =>
-				// Build updated languageMapV1
+			Future.sequence(createdFutures).flatMap { createdMap =>
 				val updatedLanguageMap = new java.util.HashMap[String, AnyRef](languageMap)
 				val resultContent = new java.util.HashMap[String, AnyRef]()
+
 				createdMap.foreach { case (lang, id) =>
 					updatedLanguageMap.put(lang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
 					put("id", id)
@@ -545,23 +553,27 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					resultContent.put(lang, id)
 				}
 
-				// Prepare and call systemUpdate
-				val updateReq = new Request()
-				updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
-					put("content", new java.util.HashMap[String, AnyRef]() {{
-					put("languageMapV1", updatedLanguageMap)
-					put("versionKey", versionKey)
-					}})
-				}})
-				updateReq.setContext(request.getContext)
-				updateReq.put("identifier", sourceCollectionId)
+				val updateMap = new java.util.HashMap[String, AnyRef]()
+				updateMap.put("languageMapV1", updatedLanguageMap)
+				updateMap.put("versionKey", versionKey)
 
-				systemUpdate(updateReq).map(_ => {
+				val systemUpdateRequest = new Request()
+				systemUpdateRequest.setOperation("systemUpdate")
+				systemUpdateRequest.setRequest(updateMap)
+				systemUpdateRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+					put("graph_id", "domain")
+					put("version", "1.0")
+					put("objectType", "Content")
+					put("schemaName", "content")
+				}})
+				systemUpdateRequest.put("identifier", sourceCollectionId)
+
+				systemUpdate(systemUpdateRequest).map { _ =>
 					val response = ResponseHandler.OK()
 					response.setId("api.content.ml.create")
 					response.put("content", resultContent)
 					response
-				})
+				}
 			}
 		}
 	}
