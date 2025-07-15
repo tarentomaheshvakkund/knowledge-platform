@@ -476,9 +476,9 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	}
 
 	def createMLContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
-		val collectionData = request.getRequest.get("collection").asInstanceOf[java.util.Map[String, AnyRef]]
-		val sourceCollectionId = collectionData.get("sourceCollectionId").asInstanceOf[String]
-		val languages = collectionData.get("language").asInstanceOf[java.util.List[String]]
+		val contentData = request.getRequest.get("content").asInstanceOf[java.util.Map[String, AnyRef]]
+		val sourceCollectionId = contentData.get("sourceCollectionId").asInstanceOf[String]
+		val languages = contentData.get("language").asInstanceOf[java.util.List[String]]
 
 		val readRequest = new Request()
 		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
@@ -495,27 +495,40 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		DataNode.read(readRequest).flatMap { node =>
 			val metadata = node.getMetadata
 			val status = metadata.getOrDefault("status", "").asInstanceOf[String]
-			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
-			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
-			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
-			val languageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
 
 			// Validation
 			if (!StringUtils.equalsIgnoreCase(status, "Live"))
-			throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
+				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
 
+			val languageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
 			val duplicateLang = languages.asScala.find(lang => languageMap.containsKey(lang.toLowerCase))
 			if (duplicateLang.nonEmpty)
-			throw new ClientException("ERR_LANGUAGE_ALREADY_EXISTS", s"Language ${duplicateLang.get} already exists in languageMapV1")
+				throw new ClientException("ERR_LANGUAGE_ALREADY_EXISTS", s"Language ${duplicateLang.get} already exists in languageMapV1")
 
+			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
+			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
+			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
+    		val sourceLangList = metadata.getOrDefault("language", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
+    		val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
+
+			
 			// Create new content for each language
 			val createFutures = languages.asScala.map { lang =>
 				val createReq = new Request()
 				createReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
 					put("content", new java.util.HashMap[String, AnyRef]() {{
-					put("contentType", contentType)
-					put("mimeType", mimeType)
-					put("primaryCategory", "MultiLingual Course")
+						put("contentType", contentType)
+						put("mimeType", mimeType)
+						put("language", util.Arrays.asList(lang))
+						put("primaryCategory", "Course")
+						put("courseCategory", "MultiLingual Course")
+						put("languageMapV1", new java.util.HashMap[String, AnyRef]() {{
+							put(baseLang, new java.util.HashMap[String, AnyRef]() {{
+								put("id", sourceCollectionId)
+								put("isBaseLang", Boolean.box(true))
+								put("status", status)
+							}})
+						}})
 					}})
 				}})
 				create(createReq).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
