@@ -582,7 +582,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					put("objectType", "Content")
 					put("schemaName", "content")
 				}})
-				systemUpdateRequest.put("identifier", sourceCollectionId)
+				systemUpdateRequest.getContext.put("identifier", sourceCollectionId)
 
 				systemUpdate(systemUpdateRequest).map { _ =>
 					val response = ResponseHandler.OK()
@@ -593,5 +593,4 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			}
 		}
 	}
-
 }
