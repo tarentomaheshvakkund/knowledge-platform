@@ -478,6 +478,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def createMLContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
 		val sourceCollectionId = request.getRequest.get("sourceCollectionId").asInstanceOf[String]
 		val languages = request.getRequest.get("language").asInstanceOf[java.util.List[String]]
+		val createdBy = request.getRequest.get("createdBy").asInstanceOf[String]
+		val creator = request.getRequest.get("creator").asInstanceOf[String]
+		val createdFor = request.getRequest.get("createdFor").asInstanceOf[java.util.List[String]]
+		val organisation = request.getRequest.get("organisation").asInstanceOf[java.util.List[String]]
+		val creatorContacts = request.getRequest.get("creatorContacts").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+		val creatorIds = request.getRequest.get("creatorIds").asInstanceOf[java.util.List[String]]
+		val channel = request.getRequest.get("channel").asInstanceOf[String]
 
 		val readRequest = new Request()
 		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
@@ -505,6 +512,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				throw new ClientException("ERR_LANGUAGE_ALREADY_EXISTS", s"Language ${duplicateLang.get} already exists in languageMapV1")
 
 			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
+			val channel = metadata.getOrDefault("channel", "").asInstanceOf[String]
 			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
 			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
     		val sourceLangList = metadata.getOrDefault("language", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
@@ -515,10 +523,17 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				val contentMap = new java.util.HashMap[String, AnyRef]()
 				contentMap.put("contentType", contentType)
 				contentMap.put("mimeType", mimeType)
-				contentMap.put("courseCategory", "MultiLingual Course")
+				contentMap.put("courseCategory", "Multilingual Course")
 				contentMap.put("primaryCategory", "Course")
 				contentMap.put("language", util.Arrays.asList(lang.capitalize))
   			  	contentMap.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString) // 10-digit string
+				contentMap.put("channel", channel)
+				contentMap.put("createdBy", createdBy)
+				contentMap.put("creator", creator)
+				contentMap.put("createdFor", createdFor)
+				contentMap.put("organisation", organisation)
+				contentMap.put("creatorContacts", creatorContacts)
+				contentMap.put("creatorIds", creatorIds)
 
 				val languageMapV1 = new java.util.HashMap[String, AnyRef]()
 				languageMapV1.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
@@ -535,8 +550,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				createRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
 					put("graph_id", "domain")
 					put("version", "1.0")
-					put("objectType", "Content")
-					put("schemaName", "content")
+					put("objectType", "Collection")
+					put("schemaName", "collection")
 				}})
 
 				create(createRequest).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
