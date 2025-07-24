@@ -68,18 +68,35 @@ object CopyManager {
         }).flatMap(f => f) recoverWith { case e: CompletionException => throw e.getCause }
     }
 
-    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext,  oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
-        //        cleanUpNodeRelations(node)
-        val copyCreateReq: Future[Request] = getCopyRequest(node, request)
-        copyCreateReq.map(req => {
-            DataNode.create(req).map(copiedNode => {
-                if(copyArtifactUrl){
-                    artifactUpload(node, copiedNode, request)
-                }else{
-                    Future(copiedNode)
-                }
+    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
+        val targetNodeId = Option(request.getRequest)
+          .flatMap {
+              case map: java.util.Map[_, _] =>
+                  Option(map.get("targetNodeId"))
+              case _ => None
+          }.map(_.toString)
+
+        if (targetNodeId.isDefined) {
+            val readReq = new Request()
+            readReq.setContext(request.getContext)
+            readReq.put("identifier", targetNodeId.get)
+            readReq.put("fields", util.Arrays.asList("body"))
+
+            DataNode.read(readReq).map(copiedNode => {
+                Future(copiedNode)
             }).flatMap(f => f)
-        }).flatMap(f => f)
+        } else {
+            val copyCreateReq: Future[Request] = getCopyRequest(node, request)
+            copyCreateReq.map(req => {
+                DataNode.create(req).map(copiedNode => {
+                    if (copyArtifactUrl) {
+                        artifactUpload(node, copiedNode, request)
+                    } else {
+                        Future(copiedNode)
+                    }
+                }).flatMap(f => f)
+            }).flatMap(f => f)
+        }
     }
 
     def copyCollection(originNode: Node, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext, ss: StorageService):Future[Node] = {
