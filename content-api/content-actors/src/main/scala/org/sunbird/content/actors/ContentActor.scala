@@ -483,7 +483,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val createdFor = request.getRequest.get("createdFor").asInstanceOf[java.util.List[String]]
 		val organisation = request.getRequest.get("organisation").asInstanceOf[java.util.List[String]]
 		val creatorContacts = request.getRequest.get("creatorContacts").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
-		val creatorIds = request.getRequest.get("creatorIds").asInstanceOf[java.util.List[String]]
 		val channel = request.getRequest.get("channel").asInstanceOf[String]
 
 		val readRequest = new Request()
@@ -506,6 +505,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			if (!StringUtils.equalsIgnoreCase(status, "Live"))
 				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
 
+		    val existingLanguageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
 			val languageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
 			val duplicateLang = languages.asScala.find(lang => languageMap.containsKey(lang.toLowerCase))
 			if (duplicateLang.nonEmpty)
@@ -519,7 +519,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
     		val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
 
 			
-			val createdFutures = languages.asScala.map { lang =>
+			val creationFutures = languages.asScala.map { lang =>
 				val contentMap = new java.util.HashMap[String, AnyRef]()
 				contentMap.put("contentType", contentType)
 				contentMap.put("mimeType", mimeType)
@@ -533,15 +533,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("createdFor", createdFor)
 				contentMap.put("organisation", organisation)
 				contentMap.put("creatorContacts", creatorContacts)
-				contentMap.put("creatorIds", creatorIds)
-
-				val languageMapV1 = new java.util.HashMap[String, AnyRef]()
-				languageMapV1.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
-					put("id", sourceCollectionId)
-					put("isBaseLang", Boolean.box(true))
-					put("status", status)
-				}})
-				contentMap.put("languageMapV1", languageMapV1)
 
 				val headers = new java.util.HashMap[String, AnyRef]()
 				val createRequest = new Request()
@@ -557,37 +548,70 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				create(createRequest).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
 			}
 
-			Future.sequence(createdFutures).flatMap { createdMap =>
-				val updatedLanguageMap = new java.util.HashMap[String, AnyRef](languageMap)
-				val resultContent = new java.util.HashMap[String, AnyRef]()
-
-				createdMap.foreach { case (lang, id) =>
-					updatedLanguageMap.put(lang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
-					put("id", id)
-					put("status", "draft")
+			Future.sequence(creationFutures).flatMap { createdEntries =>
+				val newLangMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+				createdEntries.foreach { case (lang, id) =>
+					newLangMap.put(lang, new java.util.HashMap[String, AnyRef]() {{
+						put("id", id)
+						put("status", "draft")
+						put("createdBy", createdBy)
+						put("isBaseLang", Boolean.box(false))
 					}})
-					resultContent.put(lang, id)
 				}
 
-				val updateMap = new java.util.HashMap[String, AnyRef]()
-				updateMap.put("languageMapV1", updatedLanguageMap)
-				updateMap.put("versionKey", versionKey)
+				// Add baseLang info (source collection itself) to the map
+				newLangMap.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
+					put("id", sourceCollectionId)
+					put("status", status)
+					put("isBaseLang", Boolean.box(true))
+					put("createdBy", createdBy)
+				}})
 
-				val systemUpdateRequest = new Request()
-				systemUpdateRequest.setOperation("systemUpdate")
-				systemUpdateRequest.setRequest(updateMap)
-				systemUpdateRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+				// Update each newly created content's languageMapV1
+				val updateNewLangsFutures = createdEntries.map { case (lang, id) =>
+					val updateReq = new Request()
+					updateReq.setOperation("systemUpdate")
+					updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+						put("languageMapV1", newLangMap)
+						put("versionKey", "")
+					}})
+					updateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+						put("identifier", id)
+					}})
+					systemUpdate(updateReq)
+				}
+
+				// Merge existing languageMapV1 with newLangMap for source content
+				val finalLangMap = new java.util.HashMap[String, AnyRef]()
+				finalLangMap.putAll(existingLanguageMap)
+				newLangMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
+					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k, v)
+				})
+
+				val sourceUpdateReq = new Request()
+				sourceUpdateReq.setOperation("systemUpdate")
+				sourceUpdateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+					put("languageMapV1", finalLangMap)
+					put("versionKey", versionKey)
+				}})
+				sourceUpdateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
 					put("graph_id", "domain")
 					put("version", "1.0")
 					put("objectType", "Content")
 					put("schemaName", "content")
+					put("identifier", sourceCollectionId)
 				}})
-				systemUpdateRequest.getContext.put("identifier", sourceCollectionId)
 
-				systemUpdate(systemUpdateRequest).map { _ =>
+				Future.sequence(updateNewLangsFutures :+ systemUpdate(sourceUpdateReq)).map { _ =>
+					val result = new java.util.HashMap[String, String]()
+					createdEntries.foreach { case (lang, id) => result.put(lang, id) }
 					val response = ResponseHandler.OK()
 					response.setId("api.content.ml.create")
-					response.put("content", resultContent)
+					response.put("content", result)
 					response
 				}
 			}
