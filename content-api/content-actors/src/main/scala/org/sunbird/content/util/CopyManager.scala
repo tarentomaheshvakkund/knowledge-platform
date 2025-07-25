@@ -286,7 +286,7 @@ object CopyManager {
                 result.put(ContentConstants.HIERARCHY, hierarchy)
             } catch {
                 case ex: Exception =>
-                    ex.printStackTrace()  // Handle timeout/failure here
+                    ex.printStackTrace()
             }
 
             result
@@ -354,6 +354,7 @@ object CopyManager {
                     req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
                 }
                 req.setRequest(cleanedMetadata)
+                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + "totalNode:" + cleanedMetadata.size())
                 DataNode.create(req).flatMap { node =>
                     val identifier = node.getIdentifier
                     if ("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) {
@@ -373,6 +374,15 @@ object CopyManager {
                     }})
                     val childChildren = child.get(ContentConstants.CHILDREN).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
                     populateHierarchyRequestV2(childChildren, nodesModified, hierarchy, identifier, copyType, request).map(_ => ())
+                }.recoverWith {
+                    case ex: Exception =>
+                        TelemetryManager.error(s"Failed to create node for child identifier ${child.get("identifier")}: ${ex.getMessage}", ex)
+                        val failedId = Option(child.get("identifier")).getOrElse("unknown-child").toString
+                        nodesModified.put(failedId + "_error", new java.util.HashMap[String, AnyRef]() {{
+                            put("error", ex.getMessage)
+                            put("stackTrace", ex.getStackTrace.mkString("\n"))
+                        }})
+                        Future.successful(())
                 }
             }
             Future.sequence(futures).map(_ => ())
