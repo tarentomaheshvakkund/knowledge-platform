@@ -336,6 +336,7 @@ object CopyManager {
                     if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
                     else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
                 }
+                TelemetryManager.info("the size for allowed data cleanupdata is: " + allowedFieldsSet.size + " : the child MetdataRequest" + child.size())
                 cleanedMetadata.put(ContentConstants.CHILDREN, new java.util.ArrayList[AnyRef]())
                 internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
                 val req = new Request(request)
