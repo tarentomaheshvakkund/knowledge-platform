@@ -589,7 +589,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				val finalLangMap = new java.util.HashMap[String, AnyRef]()
 				finalLangMap.putAll(existingLanguageMap)
 				newLangMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
-					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k, v)
+					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k.toLowerCase, v)
 				})
 
 				val sourceUpdateReq = new Request()
