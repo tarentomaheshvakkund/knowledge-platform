@@ -501,24 +501,16 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val metadata = node.getMetadata
 			val status = metadata.getOrDefault("status", "").asInstanceOf[String]
 
-			// Validation
 			if (!StringUtils.equalsIgnoreCase(status, "Live"))
 				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
 
-		    val existingLanguageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
-			val languageMap = metadata.getOrDefault("languageMapV1", new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
-			val duplicateLang = languages.asScala.find(lang => languageMap.containsKey(lang.toLowerCase))
-			if (duplicateLang.nonEmpty)
-				throw new ClientException("ERR_LANGUAGE_ALREADY_EXISTS", s"Language ${duplicateLang.get} already exists in languageMapV1")
-
+			val existingLanguageMap = metadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
+			val sourceLangList = metadata.getOrDefault("language", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
+			val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
 			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
-			val channel = metadata.getOrDefault("channel", "").asInstanceOf[String]
 			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
 			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
-    		val sourceLangList = metadata.getOrDefault("language", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
-    		val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
 
-			
 			val creationFutures = languages.asScala.map { lang =>
 				val contentMap = new java.util.HashMap[String, AnyRef]()
 				contentMap.put("contentType", contentType)
@@ -526,7 +518,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("courseCategory", "Multilingual Course")
 				contentMap.put("primaryCategory", "Course")
 				contentMap.put("language", util.Arrays.asList(lang.capitalize))
-  			  	contentMap.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString) // 10-digit string
+				contentMap.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
 				contentMap.put("channel", channel)
 				contentMap.put("createdBy", createdBy)
 				contentMap.put("creator", creator)
@@ -534,7 +526,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("organisation", organisation)
 				contentMap.put("creatorContacts", creatorContacts)
 
-				val headers = new java.util.HashMap[String, AnyRef]()
 				val createRequest = new Request()
 				createRequest.setOperation("createContent")
 				createRequest.setRequest(contentMap)
@@ -545,76 +536,80 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					put("schemaName", "collection")
 				}})
 
-				create(createRequest).map(resp => lang -> resp.get("identifier").asInstanceOf[String])
+				create(createRequest).map(resp => lang.toLowerCase -> resp.get("identifier").asInstanceOf[String])
 			}
 
 			Future.sequence(creationFutures).flatMap { createdEntries =>
-				val newLangMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+				// Combine all entries (existing + new + baseLang) into one map with lowercase keys
+				val finalLangMap = new java.util.HashMap[String, AnyRef]()
+				// Add existing entries
+				existingLanguageMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
+					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k.toLowerCase, v)
+				})
+				// Add new entries
 				createdEntries.foreach { case (lang, id) =>
-					newLangMap.put(lang, new java.util.HashMap[String, AnyRef]() {{
+					finalLangMap.put(lang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
 						put("id", id)
 						put("status", "draft")
 						put("createdBy", createdBy)
 						put("isBaseLang", Boolean.box(false))
 					}})
 				}
-
-				// Add baseLang info (source collection itself) to the map
-				newLangMap.put(baseLang, new java.util.HashMap[String, AnyRef]() {{
+				// Ensure baseLang is present
+				finalLangMap.put(baseLang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
 					put("id", sourceCollectionId)
 					put("status", status)
-					put("isBaseLang", Boolean.box(true))
 					put("createdBy", createdBy)
+					put("isBaseLang", Boolean.box(true))
 				}})
 
-				// Update each newly created content's languageMapV1
-				val updateNewLangsFutures = createdEntries.map { case (lang, id) =>
-					val updateReq = new Request()
-					updateReq.setOperation("systemUpdate")
-					updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
-						put("languageMapV1", newLangMap)
-						put("versionKey", "")
-					}})
-					updateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+				// Update all nodes (newly created + existing languageMapV1) with latest languageMapV1
+				val allLangNodes = finalLangMap.asScala.toSeq.map { case (lang, map) =>
+					lang -> map.asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]
+				}
+
+				val updateFutures = allLangNodes.map { case (lang, id) =>
+					val readReq = new Request()
+					readReq.setContext(new java.util.HashMap[String, AnyRef]() {{
 						put("graph_id", "domain")
 						put("version", "1.0")
 						put("objectType", "Content")
 						put("schemaName", "content")
-						put("identifier", id)
 					}})
-					systemUpdate(updateReq)
+					readReq.setObjectType("Content")
+					readReq.put("identifier", id)
+					readReq.put("mode", "read")
+
+					DataNode.read(readReq).flatMap { node =>
+						val nodeVersionKey = node.getMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
+
+						val updateReq = new Request()
+						updateReq.setOperation("systemUpdate")
+						updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+							put("languageMapV1", finalLangMap)
+							put("versionKey", nodeVersionKey)
+						}})
+						updateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+							put("graph_id", "domain")
+							put("version", "1.0")
+							put("objectType", "Content")
+							put("schemaName", "content")
+							put("identifier", id)
+						}})
+
+						systemUpdate(updateReq)
+					}
 				}
 
-				// Merge existing languageMapV1 with newLangMap for source content
-				val finalLangMap = new java.util.HashMap[String, AnyRef]()
-				finalLangMap.putAll(existingLanguageMap)
-				newLangMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
-					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k.toLowerCase, v)
-				})
-
-				val sourceUpdateReq = new Request()
-				sourceUpdateReq.setOperation("systemUpdate")
-				sourceUpdateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
-					put("languageMapV1", finalLangMap)
-					put("versionKey", versionKey)
-				}})
-				sourceUpdateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
-					put("graph_id", "domain")
-					put("version", "1.0")
-					put("objectType", "Content")
-					put("schemaName", "content")
-					put("identifier", sourceCollectionId)
-				}})
-
-				Future.sequence(updateNewLangsFutures :+ systemUpdate(sourceUpdateReq)).map { _ =>
+				Future.sequence(updateFutures).map { _ =>
 					val result = new java.util.HashMap[String, String]()
-					createdEntries.foreach { case (lang, id) => result.put(lang, id) }
+					createdEntries.foreach { case (lang, id) => result.put(lang.capitalize, id) }
 					val response = ResponseHandler.OK()
 					response.setId("api.content.ml.create")
 					response.put("content", result)
 					response
 				}
 			}
-		}
+  		}
 	}
 }
