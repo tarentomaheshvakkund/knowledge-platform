@@ -354,8 +354,17 @@ object CopyManager {
                     req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.CONTENT_SCHEMA_NAME)
                     req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
                 }
+                //Copy few fields from incoming request object
+                val createdBy = requestMetadata.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
+                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, "").asInstanceOf[java.util.List[String]]
+                if (StringUtils.isNotBlank(createdBy)) {
+                    cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
+                }
+                if (CollectionUtils.isNotEmpty(creatorIDs)) {
+                    cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
+                }
                 req.setRequest(cleanedMetadata)
-                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + "totalNode:" + cleanedMetadata.size())
+                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + ", totalNode:" + cleanedMetadata.size())
                 DataNode.create(req).flatMap { node =>
                     val identifier = node.getIdentifier
                     if ("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) {

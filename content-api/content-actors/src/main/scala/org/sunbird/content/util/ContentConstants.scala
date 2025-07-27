@@ -56,4 +56,6 @@ object ContentConstants {
     val LAST_UPDATED_ON:String = "lastUpdatedOn"
     val VERSION:String = "version"
     val COPY_SCHEME:String = "copyScheme"
+    val CREATOR_IDS:String = "creatorIDs"
+    val CREATED_BY:String = "createdBy"
 }
