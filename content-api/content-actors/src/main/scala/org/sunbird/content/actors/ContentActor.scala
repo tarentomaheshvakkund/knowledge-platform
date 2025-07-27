@@ -500,7 +500,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		DataNode.read(readRequest).flatMap { node =>
 			val metadata = node.getMetadata
 			val status = metadata.getOrDefault("status", "").asInstanceOf[String]
-			val name = metaData.getOrDefault("name", "").asInstanceOf[String]
+			val name = metadata.getOrDefault("name", "").asInstanceOf[String]
 
 			if (!StringUtils.equalsIgnoreCase(status, "Live"))
 				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
