@@ -314,7 +314,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
-				response
+				syncLanguageMapAfterReview(identifier)
 			}
 		}).flatMap(f => f)
 	}
@@ -611,5 +611,74 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				}
 			}
   		}
+	}
+
+	def syncLanguageMapAfterReview(identifier: String): Future[Response] = {
+		logger.info("ContentActor: syncLanguageMapAfterReview called for identifier: " + identifier)
+		val confirmReadReq = new Request()
+		confirmReadReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+			put("graph_id", "domain")
+			put("version", "1.0")
+			put("objectType", "Content")
+			put("schemaName", "content")
+		}})
+		confirmReadReq.setObjectType("Content")
+		confirmReadReq.put("identifier", identifier)
+		confirmReadReq.put("mode", "edit")
+
+		DataNode.read(confirmReadReq).flatMap { confirmedNode =>
+			val latestStatus = confirmedNode.getMetadata.getOrDefault("status", "").asInstanceOf[String]
+			val languageMap = confirmedNode.getMetadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
+			logger.info("ContentActor: syncLanguageMapAfterReview - latestStatus: " + latestStatus + ", languageMap: " + languageMap)
+			if (StringUtils.equalsIgnoreCase(latestStatus, "Review") && MapUtils.isNotEmpty(languageMap)) {
+				val updatedLanguageMap = new util.HashMap[String, AnyRef]()
+				languageMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
+					override def accept(lang: String, entry: AnyRef): Unit = {
+					val entryMap = new util.HashMap[String, AnyRef]()
+					entryMap.putAll(entry.asInstanceOf[java.util.Map[String, AnyRef]])
+					if (identifier == entryMap.get("id")) {
+						entryMap.put("status", latestStatus)
+					}
+					updatedLanguageMap.put(lang.toLowerCase, entryMap)
+					}
+				})
+
+				val updateFutures = languageMap.asScala.toSeq.map { case (_, v) =>
+					val id = v.asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]
+					val readNodeReq = new Request()
+					readNodeReq.setContext(new util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+					}})
+					readNodeReq.setObjectType("Content")
+					readNodeReq.put("identifier", id)
+					readNodeReq.put("mode", "read")
+
+					DataNode.read(readNodeReq).flatMap { n =>
+					val versionKey = n.getMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
+					val updateReq = new Request()
+					updateReq.setOperation("systemUpdate")
+					updateReq.setRequest(new util.HashMap[String, AnyRef]() {{
+						put("languageMapV1", updatedLanguageMap)
+						put("versionKey", versionKey)
+					}})
+					updateReq.setContext(new util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+						put("identifier", id)
+					}})
+					systemUpdate(updateReq)
+					}
+				}
+
+				Future.sequence(updateFutures).map(_ => ResponseHandler.OK())
+			} else {
+			Future.successful(ResponseHandler.OK())
+			}
+		}
 	}
 }
