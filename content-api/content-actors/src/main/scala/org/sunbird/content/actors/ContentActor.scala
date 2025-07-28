@@ -302,7 +302,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					val reviewers = node.getMetadata.get("reviewerIDs") match {
 						case arr: Array[String] => arr.toList
 						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
-						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}")
+						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}, for Id: $identifier")
 					}
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
@@ -630,7 +630,12 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 
 		DataNode.read(confirmReadReq).flatMap { confirmedNode =>
 			val latestStatus = confirmedNode.getMetadata.getOrDefault("status", "").asInstanceOf[String]
-			val languageMap = confirmedNode.getMetadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
+			val languageMapRaw = confirmedNode.getMetadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]())
+			val languageMap = languageMapRaw match {
+				case s: String => JsonUtils.deserialize(s, classOf[java.util.Map[String, AnyRef]])
+				case m: java.util.Map[_, _] => m.asInstanceOf[java.util.Map[String, AnyRef]]
+				case _ => new util.HashMap[String, AnyRef]()
+			}
 			logger.info("ContentActor: syncLanguageMapAfterReview - latestStatus: " + latestStatus + ", languageMap: " + languageMap)
 			if (StringUtils.equalsIgnoreCase(latestStatus, "Review") && MapUtils.isNotEmpty(languageMap)) {
 				val updatedLanguageMap = new util.HashMap[String, AnyRef]()
