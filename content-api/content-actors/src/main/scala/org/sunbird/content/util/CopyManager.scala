@@ -42,6 +42,9 @@ object CopyManager {
     private val copyArtifactUrl = Platform.config.getBoolean("content.copy.is_copy_artifacturl")
     private var copySchemeMap: util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]()
     private val allowedFieldsFromConfig: util.List[String] = Platform.getStringList("content.copy.mandatory.fields", new util.ArrayList[String]())
+    private val copyHierarchyCreatedDelay: Long = Platform.getLong("content.copy.hierarchy.delay", 300)
+    private val allowedFieldsFromConfigForAssessment: util.List[String] = Platform.getStringList("content.copy.assessment.mandatory.fields", new util.ArrayList[String]())
+
 
     def copy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Response] = {
         request.getContext.put(ContentConstants.COPY_SCHEME, request.getRequest.getOrDefault(ContentConstants.COPY_SCHEME, ""))
@@ -280,7 +283,7 @@ object CopyManager {
                 // Blocking call to ensure Future completes before proceeding
                 Await.result(
                     populateHierarchyRequestV2(children, nodesModified, hierarchy, node.getIdentifier, copyType, request),
-                    Duration.create(30.0, TimeUnit.SECONDS)
+                    Duration.create(copyHierarchyCreatedDelay, TimeUnit.SECONDS)
                 )
                 result.put(ContentConstants.NODES_MODIFIED, nodesModified)
                 result.put(ContentConstants.HIERARCHY, hierarchy)
@@ -327,48 +330,57 @@ object CopyManager {
         if (children == null || children.isEmpty) {
             Future.successful(())
         } else {
-            val allowedFieldsSet = Option(request.get("fieldsToCopy")).map(_.asInstanceOf[java.util.List[String]].asScala.toSet).getOrElse(allowedFieldsFromConfig.asScala.toSet)
-            val requestMetadata = Option(request.get("metadata")).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap[String, AnyRef]())
+            val allowedFieldsSet = Option(request.get(ContentConstants.FIELD_TO_COPY)).map(_.asInstanceOf[java.util.List[String]].asScala.toSet).getOrElse(allowedFieldsFromConfig.asScala.toSet)
+            val allowedFieldSetAssessment = allowedFieldsFromConfigForAssessment.asScala.toSet
+            val requestMetadata = Option(request.get(ContentConstants.METADATA)).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap[String, AnyRef]())
             val futures = children.asScala.map { child =>
                 updateToCopySchemeContentType(request, child.get(ContentConstants.CONTENT_TYPE).asInstanceOf[String], child)
+                val objectType = child.get(ContentConstants.OBJECT_TYPE)
                 val cleanedMetadata = new java.util.HashMap[String, AnyRef]()
-                allowedFieldsSet.foreach { key =>
-                    if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
-                    else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                if (objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                    allowedFieldSetAssessment.foreach { key =>
+                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                    }
+                } else {
+                    allowedFieldsSet.foreach { key =>
+                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                    }
                 }
                 TelemetryManager.info("the size for allowed data cleanupdata is: " + allowedFieldsSet.size + " : the child MetdataRequest" + child.size())
                 cleanedMetadata.put(ContentConstants.CHILDREN, new java.util.ArrayList[AnyRef]())
                 internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
                 val req = new Request(request)
-                val objectType = child.get("objectType")
+                val createdBy = request.getRequest.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
+                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, "").asInstanceOf[java.util.List[String]]
+                if (StringUtils.isNotBlank(createdBy)) {
+                    cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
+                }
+                if (CollectionUtils.isNotEmpty(creatorIDs)) {
+                    cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
+                }
                 TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType)
-                if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase("QuestionSet")) {
-                    req.getContext.put(ContentConstants.SCHEMA_NAME, "questionset")
-                    cleanedMetadata.remove("creator")
+                if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
+                    cleanedMetadata.remove(ContentConstants.CREATOR)
+                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
                     req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
-                } else if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase("Question")) {
-                    req.getContext.put(ContentConstants.SCHEMA_NAME, "question")
-                    cleanedMetadata.remove("creator")
+                } else if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION)) {
+                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION)
+                    cleanedMetadata.remove(ContentConstants.CREATOR)
+                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
                     req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
                 } else {
                     req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.CONTENT_SCHEMA_NAME)
                     req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
                 }
-                //Copy few fields from incoming request object
-                val createdBy = requestMetadata.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
-                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, "").asInstanceOf[java.util.List[String]]
-                req.setRequest(cleanedMetadata)
                 TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + ", totalNode:" + cleanedMetadata.size())
+                req.setRequest(cleanedMetadata)
                 DataNode.create(req).flatMap { node =>
                     val identifier = node.getIdentifier
                     if ("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) {
                         nodesModified.put(identifier, new java.util.HashMap[String, AnyRef]() {{
-                            if (StringUtils.isNotBlank(createdBy)) {
-                                cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
-                            }
-                            if (CollectionUtils.isNotEmpty(creatorIDs)) {
-                                cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
-                            }
                             put(ContentConstants.METADATA, cleanUpCopiedData(cleanedMetadata, copyType))
                             put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
                             put("isNew", java.lang.Boolean.TRUE)
