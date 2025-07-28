@@ -63,6 +63,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "reviewContent" => reviewContent(request)
 			case "rejectContent" => rejectContent(request)
 			case "adminReadContent" => adminRead(request)
+			case "createMLContent" => createMLContent(request)
 			case _ => ERROR(request.getOperation)
 		}
 	}
@@ -301,7 +302,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					val reviewers = node.getMetadata.get("reviewerIDs") match {
 						case arr: Array[String] => arr.toList
 						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
-						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}")
+						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}, for Id: $identifier")
 					}
 					NotificationManager.sendNotification(
 						"CONTENT_REVIEW_REQUEST",
@@ -313,7 +314,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
-				response
+				syncLanguageMapAfterReview(identifier)
 			}
 		}).flatMap(f => f)
 	}
@@ -474,4 +475,217 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		})
 	}
 
+	def createMLContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+		val sourceCollectionId = request.getRequest.get("sourceCollectionId").asInstanceOf[String]
+		val languages = request.getRequest.get("language").asInstanceOf[java.util.List[String]]
+		val createdBy = request.getRequest.get("createdBy").asInstanceOf[String]
+		val creator = request.getRequest.get("creator").asInstanceOf[String]
+		val createdFor = request.getRequest.get("createdFor").asInstanceOf[java.util.List[String]]
+		val organisation = request.getRequest.get("organisation").asInstanceOf[java.util.List[String]]
+		val creatorContacts = request.getRequest.get("creatorContacts").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+		val channel = request.getRequest.get("channel").asInstanceOf[String]
+
+		val readRequest = new Request()
+		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+			put("graph_id", "domain")
+			put("version", "1.0")
+			put("objectType", "Content")
+			put("schemaName", "content")
+		}})
+		readRequest.setObjectType("Content")
+		readRequest.put("identifier", sourceCollectionId)
+		readRequest.put("mode", "read")
+		readRequest.put("fields", new util.ArrayList[String]())
+
+		DataNode.read(readRequest).flatMap { node =>
+			val metadata = node.getMetadata
+			val status = metadata.getOrDefault("status", "").asInstanceOf[String]
+			val name = metadata.getOrDefault("name", "").asInstanceOf[String]
+
+			if (!StringUtils.equalsIgnoreCase(status, "Live"))
+				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
+
+			val existingLanguageMap = metadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
+			val sourceLangList = metadata.getOrDefault("language", new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
+			val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
+			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
+			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
+			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
+
+			val creationFutures = languages.asScala.map { lang =>
+				val contentMap = new java.util.HashMap[String, AnyRef]()
+				contentMap.put("contentType", contentType)
+				contentMap.put("mimeType", mimeType)
+				contentMap.put("courseCategory", "Multilingual Course")
+				contentMap.put("primaryCategory", "Course")
+				contentMap.put("language", util.Arrays.asList(lang.capitalize))
+				contentMap.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
+				contentMap.put("channel", channel)
+				contentMap.put("createdBy", createdBy)
+				contentMap.put("creator", creator)
+				contentMap.put("createdFor", createdFor)
+				contentMap.put("organisation", organisation)
+				contentMap.put("creatorContacts", creatorContacts)
+				contentMap.put("name", name + " - " + lang.capitalize)
+
+				val createRequest = new Request()
+				createRequest.setOperation("createContent")
+				createRequest.setRequest(contentMap)
+				createRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
+					put("graph_id", "domain")
+					put("version", "1.0")
+					put("objectType", "Collection")
+					put("schemaName", "collection")
+				}})
+
+				create(createRequest).map(resp => lang.toLowerCase -> resp.get("identifier").asInstanceOf[String])
+			}
+
+			Future.sequence(creationFutures).flatMap { createdEntries =>
+				// Combine all entries (existing + new + baseLang) into one map with lowercase keys
+				val finalLangMap = new java.util.HashMap[String, AnyRef]()
+				// Add existing entries
+				existingLanguageMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
+					override def accept(k: String, v: AnyRef): Unit = finalLangMap.put(k.toLowerCase, v)
+				})
+				// Add new entries
+				createdEntries.foreach { case (lang, id) =>
+					finalLangMap.put(lang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
+						put("id", id)
+						put("status", "draft")
+						put("createdBy", createdBy)
+						put("isBaseLang", Boolean.box(false))
+					}})
+				}
+				// Ensure baseLang is present
+				finalLangMap.put(baseLang.toLowerCase, new java.util.HashMap[String, AnyRef]() {{
+					put("id", sourceCollectionId)
+					put("status", status)
+					put("createdBy", createdBy)
+					put("isBaseLang", Boolean.box(true))
+				}})
+
+				// Update all nodes (newly created + existing languageMapV1) with latest languageMapV1
+				val allLangNodes = finalLangMap.asScala.toSeq.map { case (lang, map) =>
+					lang -> map.asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]
+				}
+
+				val updateFutures = allLangNodes.map { case (lang, id) =>
+					val readReq = new Request()
+					readReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+					}})
+					readReq.setObjectType("Content")
+					readReq.put("identifier", id)
+					readReq.put("mode", "read")
+
+					DataNode.read(readReq).flatMap { node =>
+						val nodeVersionKey = node.getMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
+
+						val updateReq = new Request()
+						updateReq.setOperation("systemUpdate")
+						updateReq.setRequest(new java.util.HashMap[String, AnyRef]() {{
+							put("languageMapV1", finalLangMap)
+							put("versionKey", nodeVersionKey)
+						}})
+						updateReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+							put("graph_id", "domain")
+							put("version", "1.0")
+							put("objectType", "Content")
+							put("schemaName", "content")
+							put("identifier", id)
+						}})
+
+						systemUpdate(updateReq)
+					}
+				}
+
+				Future.sequence(updateFutures).map { _ =>
+					val result = new java.util.HashMap[String, String]()
+					createdEntries.foreach { case (lang, id) => result.put(lang.capitalize, id) }
+					val response = ResponseHandler.OK()
+					response.setId("api.content.ml.create")
+					response.put("content", result)
+					response
+				}
+			}
+  		}
+	}
+
+	def syncLanguageMapAfterReview(identifier: String): Future[Response] = {
+		logger.info("ContentActor: syncLanguageMapAfterReview called for identifier: " + identifier)
+		val confirmReadReq = new Request()
+		confirmReadReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+			put("graph_id", "domain")
+			put("version", "1.0")
+			put("objectType", "Content")
+			put("schemaName", "content")
+		}})
+		confirmReadReq.setObjectType("Content")
+		confirmReadReq.put("identifier", identifier)
+		confirmReadReq.put("mode", "edit")
+
+		DataNode.read(confirmReadReq).flatMap { confirmedNode =>
+			val latestStatus = confirmedNode.getMetadata.getOrDefault("status", "").asInstanceOf[String]
+			val languageMapRaw = confirmedNode.getMetadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]())
+			val languageMap = languageMapRaw match {
+				case s: String => JsonUtils.deserialize(s, classOf[java.util.Map[String, AnyRef]])
+				case m: java.util.Map[_, _] => m.asInstanceOf[java.util.Map[String, AnyRef]]
+				case _ => new util.HashMap[String, AnyRef]()
+			}
+			logger.info("ContentActor: syncLanguageMapAfterReview - latestStatus: " + latestStatus + ", languageMap: " + languageMap)
+			if (StringUtils.equalsIgnoreCase(latestStatus, "Review") && MapUtils.isNotEmpty(languageMap)) {
+				val updatedLanguageMap = new util.HashMap[String, AnyRef]()
+				languageMap.forEach(new java.util.function.BiConsumer[String, AnyRef] {
+					override def accept(lang: String, entry: AnyRef): Unit = {
+					val entryMap = new util.HashMap[String, AnyRef]()
+					entryMap.putAll(entry.asInstanceOf[java.util.Map[String, AnyRef]])
+					if (identifier == entryMap.get("id")) {
+						entryMap.put("status", latestStatus)
+					}
+					updatedLanguageMap.put(lang.toLowerCase, entryMap)
+					}
+				})
+
+				val updateFutures = languageMap.asScala.toSeq.map { case (_, v) =>
+					val id = v.asInstanceOf[java.util.Map[String, AnyRef]].get("id").asInstanceOf[String]
+					val readNodeReq = new Request()
+					readNodeReq.setContext(new util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+					}})
+					readNodeReq.setObjectType("Content")
+					readNodeReq.put("identifier", id)
+					readNodeReq.put("mode", "read")
+
+					DataNode.read(readNodeReq).flatMap { n =>
+					val versionKey = n.getMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
+					val updateReq = new Request()
+					updateReq.setOperation("systemUpdate")
+					updateReq.setRequest(new util.HashMap[String, AnyRef]() {{
+						put("languageMapV1", updatedLanguageMap)
+						put("versionKey", versionKey)
+					}})
+					updateReq.setContext(new util.HashMap[String, AnyRef]() {{
+						put("graph_id", "domain")
+						put("version", "1.0")
+						put("objectType", "Content")
+						put("schemaName", "content")
+						put("identifier", id)
+					}})
+					systemUpdate(updateReq)
+					}
+				}
+
+				Future.sequence(updateFutures).map(_ => ResponseHandler.OK())
+			} else {
+			Future.successful(ResponseHandler.OK())
+			}
+		}
+	}
 }

@@ -4,9 +4,8 @@ package org.sunbird.content.util
 import java.io.{File, IOException}
 import java.net.URL
 import java.util
-import java.util.UUID
-import java.util.concurrent.CompletionException
-
+import java.util.{Collections, UUID}
+import java.util.concurrent.{CompletionException, TimeUnit}
 import org.apache.commons.collections.CollectionUtils
 import org.apache.commons.collections4.MapUtils
 import org.apache.commons.io.{FileUtils, FilenameUtils}
@@ -25,9 +24,11 @@ import org.sunbird.graph.utils.{NodeUtil, ScalaJsonUtils}
 import org.sunbird.managers.{HierarchyManager, UpdateHierarchyManager}
 import org.sunbird.mimetype.factory.MimeTypeManagerFactory
 import org.sunbird.mimetype.mgr.impl.H5PMimeTypeMgrImpl
+import org.sunbird.telemetry.logger.TelemetryManager
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 
 object CopyManager {
@@ -40,6 +41,10 @@ object CopyManager {
     private val restrictedMimeTypesForUpload = List("application/vnd.ekstep.ecml-archive","application/vnd.ekstep.content-collection")
     private val copyArtifactUrl = Platform.config.getBoolean("content.copy.is_copy_artifacturl")
     private var copySchemeMap: util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]()
+    private val allowedFieldsFromConfig: util.List[String] = Platform.getStringList("content.copy.mandatory.fields", new util.ArrayList[String]())
+    private val copyHierarchyCreatedDelay: Long = Platform.getLong("content.copy.hierarchy.delay", 300)
+    private val allowedFieldsFromConfigForAssessment: util.List[String] = Platform.getStringList("content.copy.assessment.mandatory.fields", new util.ArrayList[String]())
+
 
     def copy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Response] = {
         request.getContext.put(ContentConstants.COPY_SCHEME, request.getRequest.getOrDefault(ContentConstants.COPY_SCHEME, ""))
@@ -68,18 +73,35 @@ object CopyManager {
         }).flatMap(f => f) recoverWith { case e: CompletionException => throw e.getCause }
     }
 
-    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext,  oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
-        //        cleanUpNodeRelations(node)
-        val copyCreateReq: Future[Request] = getCopyRequest(node, request)
-        copyCreateReq.map(req => {
-            DataNode.create(req).map(copiedNode => {
-                if(copyArtifactUrl){
-                    artifactUpload(node, copiedNode, request)
-                }else{
-                    Future(copiedNode)
-                }
+    def copyContent(node: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
+        val targetNodeId = Option(request.getRequest)
+          .flatMap {
+              case map: java.util.Map[_, _] =>
+                  Option(map.get("targetNodeId"))
+              case _ => None
+          }.map(_.toString)
+
+        if (targetNodeId.isDefined) {
+            val readReq = new Request()
+            readReq.setContext(request.getContext)
+            readReq.put("identifier", targetNodeId.get)
+            readReq.put("fields", util.Arrays.asList("body"))
+
+            DataNode.read(readReq).map(copiedNode => {
+                Future(copiedNode)
             }).flatMap(f => f)
-        }).flatMap(f => f)
+        } else {
+            val copyCreateReq: Future[Request] = getCopyRequest(node, request)
+            copyCreateReq.map(req => {
+                DataNode.create(req).map(copiedNode => {
+                    if (copyArtifactUrl) {
+                        artifactUpload(node, copiedNode, request)
+                    } else {
+                        Future(copiedNode)
+                    }
+                }).flatMap(f => f)
+            }).flatMap(f => f)
+        }
     }
 
     def copyCollection(originNode: Node, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext, ss: StorageService):Future[Node] = {
@@ -101,7 +123,7 @@ object CopyManager {
     }
 
     def updateHierarchy(request: Request, node: Node, originNode: Node, originHierarchy: util.Map[String, AnyRef], copyType:String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
-        val updateHierarchyRequest = prepareHierarchyRequest(originHierarchy, originNode, node, copyType, request)
+        val updateHierarchyRequest = prepareHierarchyRequestV2(originHierarchy, originNode, node, copyType, request)
         val hierarchyRequest = new Request(request)
         hierarchyRequest.putAll(updateHierarchyRequest)
         hierarchyRequest.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.COLLECTION_SCHEMA_NAME)
@@ -246,6 +268,34 @@ object CopyManager {
         } else new util.HashMap[String, AnyRef]()
     }
 
+    def prepareHierarchyRequestV2(originHierarchy: util.Map[String, AnyRef], originNode: Node, node: Node, copyType: String, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext):util.HashMap[String, AnyRef] = {
+        val children:util.List[util.Map[String, AnyRef]] = originHierarchy.get("children").asInstanceOf[util.List[util.Map[String, AnyRef]]]
+        if(null != children && !children.isEmpty) {
+            val nodesModified = new util.HashMap[String, AnyRef]()
+            val hierarchy = new util.HashMap[String, AnyRef]()
+            hierarchy.put(node.getIdentifier, new util.HashMap[String, AnyRef](){{
+                put(ContentConstants.CHILDREN, new util.ArrayList[String]())
+                put(ContentConstants.ROOT, true.asInstanceOf[AnyRef])
+                put(ContentConstants.CONTENT_TYPE, node.getMetadata.get(ContentConstants.CONTENT_TYPE))
+            }})
+            val result = new util.HashMap[String, AnyRef]()
+            try {
+                // Blocking call to ensure Future completes before proceeding
+                Await.result(
+                    populateHierarchyRequestV2(children, nodesModified, hierarchy, node.getIdentifier, copyType, request),
+                    Duration.create(copyHierarchyCreatedDelay, TimeUnit.SECONDS)
+                )
+                result.put(ContentConstants.NODES_MODIFIED, nodesModified)
+                result.put(ContentConstants.HIERARCHY, hierarchy)
+            } catch {
+                case ex: Exception =>
+                    ex.printStackTrace()
+            }
+
+            result
+        } else new util.HashMap[String, AnyRef]()
+    }
+
     def populateHierarchyRequest(children: util.List[util.Map[String, AnyRef]], nodesModified: util.HashMap[String, AnyRef], hierarchy: util.HashMap[String, AnyRef], parentId: String, copyType: String, request: Request): Unit = {
         if (null != children && !children.isEmpty) {
             children.asScala.toList.foreach(child => {
@@ -275,6 +325,94 @@ object CopyManager {
             })
         }
     }
+
+    def populateHierarchyRequestV2(children: java.util.List[java.util.Map[String, AnyRef]], nodesModified: java.util.HashMap[String, AnyRef], hierarchy: java.util.HashMap[String, AnyRef], parentId: String, copyType: String, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Unit] = {
+        if (children == null || children.isEmpty) {
+            Future.successful(())
+        } else {
+            val allowedFieldsSet = Option(request.get(ContentConstants.FIELD_TO_COPY)).map(_.asInstanceOf[java.util.List[String]].asScala.toSet).getOrElse(allowedFieldsFromConfig.asScala.toSet)
+            val allowedFieldSetAssessment = allowedFieldsFromConfigForAssessment.asScala.toSet
+            val requestMetadata = Option(request.get(ContentConstants.METADATA)).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap[String, AnyRef]())
+            val futures = children.asScala.map { child =>
+                updateToCopySchemeContentType(request, child.get(ContentConstants.CONTENT_TYPE).asInstanceOf[String], child)
+                val objectType = child.get(ContentConstants.OBJECT_TYPE)
+                val cleanedMetadata = new java.util.HashMap[String, AnyRef]()
+                if (objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                    allowedFieldSetAssessment.foreach { key =>
+                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                    }
+                } else {
+                    allowedFieldsSet.foreach { key =>
+                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                    }
+                }
+                TelemetryManager.info("the size for allowed data cleanupdata is: " + allowedFieldsSet.size + " : the child MetdataRequest" + child.size())
+                cleanedMetadata.put(ContentConstants.CHILDREN, new java.util.ArrayList[AnyRef]())
+                internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
+                val req = new Request(request)
+                val createdBy = request.getRequest.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
+                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, Collections.emptyList[String]()).asInstanceOf[java.util.List[String]]
+                if (StringUtils.isNotBlank(createdBy)) {
+                    cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
+                }
+                if (CollectionUtils.isNotEmpty(creatorIDs)) {
+                    cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
+                }
+                cleanedMetadata.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
+                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType)
+                if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
+                    cleanedMetadata.remove(ContentConstants.CREATOR)
+                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
+                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                } else if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION)) {
+                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION)
+                    cleanedMetadata.remove(ContentConstants.CREATOR)
+                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
+                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                } else {
+                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.CONTENT_SCHEMA_NAME)
+                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                }
+                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + ", totalNode:" + cleanedMetadata.size())
+                req.setRequest(cleanedMetadata)
+                DataNode.create(req).flatMap { node =>
+                    val identifier = node.getIdentifier
+                    if ("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) {
+                        nodesModified.put(identifier, new java.util.HashMap[String, AnyRef]() {{
+                            put(ContentConstants.METADATA, cleanUpCopiedData(cleanedMetadata, copyType))
+                            put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
+                            put("isNew", java.lang.Boolean.TRUE)
+                            put("setDefaultValue", java.lang.Boolean.FALSE)
+                        }})
+                    }
+                    TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + " the identifier is: " + identifier)
+                    hierarchy.get(parentId).asInstanceOf[util.Map[String, AnyRef]].get(ContentConstants.CHILDREN).asInstanceOf[util.List[String]].add(identifier)
+                    hierarchy.put(identifier, new util.HashMap[String, AnyRef]() {{
+                        put(ContentConstants.CHILDREN, new util.ArrayList[String]())
+                        put(ContentConstants.ROOT, false.asInstanceOf[AnyRef])
+                        put(ContentConstants.CONTENT_TYPE, child.get(ContentConstants.CONTENT_TYPE))
+                    }})
+                    val childChildren = child.get(ContentConstants.CHILDREN).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+                    populateHierarchyRequestV2(childChildren, nodesModified, hierarchy, identifier, copyType, request).map(_ => ())
+                }.recoverWith {
+                    case ex: Exception =>
+                        TelemetryManager.error(s"Failed to create node for child identifier ${child.get("identifier")}: ${ex.getMessage}", ex)
+                        val failedId = Option(child.get("identifier")).getOrElse("unknown-child").toString
+                        nodesModified.put(failedId + "_error", new java.util.HashMap[String, AnyRef]() {{
+                            put("error", ex.getMessage)
+                            put("stackTrace", ex.getStackTrace.mkString("\n"))
+                        }})
+                        Future.successful(())
+                }
+            }
+            Future.sequence(futures).map(_ => ())
+        }
+    }
+
+
 
     def artifactUpload(node: Node, copiedNode: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
         val artifactUrl = node.getMetadata.getOrDefault(ContentConstants.ARTIFACT_URL, "").asInstanceOf[String]
