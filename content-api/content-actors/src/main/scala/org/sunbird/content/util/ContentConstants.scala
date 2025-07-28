@@ -53,9 +53,14 @@ object ContentConstants {
     val HIERARCHY_PREFIX: String = "hierarchy_"
     val ERR_INVALID_CONTENT: String = "ERR_INVALID_CONTENT"
     val CONTENT_OBJECT_TYPE: String = "Content"
-    val LAST_UPDATED_ON:String = "lastUpdatedOn"
-    val VERSION:String = "version"
-    val COPY_SCHEME:String = "copyScheme"
-    val CREATOR_IDS:String = "creatorIDs"
-    val CREATED_BY:String = "createdBy"
+    val LAST_UPDATED_ON: String = "lastUpdatedOn"
+    val VERSION: String = "version"
+    val COPY_SCHEME: String = "copyScheme"
+    val CREATOR_IDS: String = "creatorIDs"
+    val CREATED_BY: String = "createdBy"
+    val FIELD_TO_COPY: String = "fieldsToCopy"
+    val OBJECT_TYPE: String = "objectType";
+    val QUESTION_SET: String = "questionset";
+    val QUESTION: String = "question";
+    val CREATOR: String = "creator";
 }
