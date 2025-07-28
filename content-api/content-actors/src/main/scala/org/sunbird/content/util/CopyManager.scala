@@ -360,6 +360,7 @@ object CopyManager {
                 if (CollectionUtils.isNotEmpty(creatorIDs)) {
                     cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
                 }
+                cleanedMetadata.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
                 TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType)
                 if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
                     req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
