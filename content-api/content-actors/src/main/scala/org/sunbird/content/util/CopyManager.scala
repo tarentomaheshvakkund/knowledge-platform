@@ -4,7 +4,7 @@ package org.sunbird.content.util
 import java.io.{File, IOException}
 import java.net.URL
 import java.util
-import java.util.UUID
+import java.util.{Collections, UUID}
 import java.util.concurrent.{CompletionException, TimeUnit}
 import org.apache.commons.collections.CollectionUtils
 import org.apache.commons.collections4.MapUtils
@@ -353,13 +353,14 @@ object CopyManager {
                 internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
                 val req = new Request(request)
                 val createdBy = request.getRequest.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
-                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, "").asInstanceOf[java.util.List[String]]
+                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, Collections.emptyList[String]()).asInstanceOf[java.util.List[String]]
                 if (StringUtils.isNotBlank(createdBy)) {
                     cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
                 }
                 if (CollectionUtils.isNotEmpty(creatorIDs)) {
                     cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
                 }
+                cleanedMetadata.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
                 TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType)
                 if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
                     req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
