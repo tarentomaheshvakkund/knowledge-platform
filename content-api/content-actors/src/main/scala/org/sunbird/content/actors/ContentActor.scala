@@ -487,6 +487,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val organisation = request.getRequest.get("organisation").asInstanceOf[java.util.List[String]]
 		val creatorContacts = request.getRequest.get("creatorContacts").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
 		val channel = request.getRequest.get("channel").asInstanceOf[String]
+		val posterImage = request.getRequest.get("posterImage").asInstanceOf[String]
+		val appIcon = request.getRequest.get("appIcon").asInstanceOf[String]
 
 		val readRequest = new Request()
 		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
@@ -530,6 +532,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("organisation", organisation)
 				contentMap.put("creatorContacts", creatorContacts)
 				contentMap.put("name", name + " - " + lang.capitalize)
+				contentMap.put("posterImage", posterImage)
+				contentMap.put("appIcon", appIcon)
 
 				val createRequest = new Request()
 				createRequest.setOperation("createContent")
