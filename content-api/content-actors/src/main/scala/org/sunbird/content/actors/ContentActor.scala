@@ -304,13 +304,17 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						case list: java.util.List[_] => list.asScala.toList.map(_.toString)
 						case other => throw new RuntimeException(s"Unexpected type for reviewerIDs: ${other.getClass}, for Id: $identifier")
 					}
-					NotificationManager.sendNotification(
-						"CONTENT_REVIEW_REQUEST",
-						"ALERT",
-						reviewers,
-						node.getMetadata.get("name").asInstanceOf[String],
-						Map[String, Any]("id" -> identifier)
-					)
+					if (reviewers.nonEmpty) {
+						NotificationManager.sendNotification(
+							"CONTENT_REVIEW_REQUEST",
+							"ALERT",
+							reviewers,
+							node.getMetadata.get("name").asInstanceOf[String],
+							Map[String, Any]("id" -> identifier)
+						)
+					} else {
+						logger.warn("No reviewers found for content with identifier: " + identifier)
+					}
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
