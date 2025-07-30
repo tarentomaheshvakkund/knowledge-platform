@@ -487,8 +487,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val organisation = request.getRequest.get("organisation").asInstanceOf[java.util.List[String]]
 		val creatorContacts = request.getRequest.get("creatorContacts").asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
 		val channel = request.getRequest.get("channel").asInstanceOf[String]
-		val posterImage = request.getRequest.get("posterImage").asInstanceOf[String]
-		val appIcon = request.getRequest.get("appIcon").asInstanceOf[String]
 
 		val readRequest = new Request()
 		readRequest.setContext(new java.util.HashMap[String, AnyRef]() {{
@@ -516,6 +514,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val versionKey = metadata.getOrDefault("versionKey", "").asInstanceOf[String]
 			val contentType = metadata.getOrDefault("contentType", "").asInstanceOf[String]
 			val mimeType = metadata.getOrDefault("mimeType", "").asInstanceOf[String]
+			val posterImage = metadata.getOrDefault("posterImage", "").asInstanceOf[String]
+			val appIcon = metadata.getOrDefault("appIcon", "").asInstanceOf[String]
 
 			val creationFutures = languages.asScala.map { lang =>
 				val contentMap = new java.util.HashMap[String, AnyRef]()
