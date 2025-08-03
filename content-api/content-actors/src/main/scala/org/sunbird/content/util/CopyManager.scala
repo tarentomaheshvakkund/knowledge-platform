@@ -1,20 +1,16 @@
 package org.sunbird.content.util
 
 
-import java.io.{File, IOException}
-import java.net.URL
-import java.util
-import java.util.{Collections, UUID}
-import java.util.concurrent.{CompletionException, TimeUnit}
+import com.datastax.driver.core.utils.UUIDs
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.commons.collections.CollectionUtils
 import org.apache.commons.collections4.MapUtils
 import org.apache.commons.io.{FileUtils, FilenameUtils}
 import org.apache.commons.lang.StringUtils
-import org.sunbird.models.UploadParams
 import org.sunbird.cloudstore.StorageService
-import org.sunbird.common.Platform
+import org.sunbird.common.{JsonUtils, Platform}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
-import org.sunbird.common.exception.ClientException
+import org.sunbird.common.exception.{ClientException, ServerException}
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.common.Identifier
 import org.sunbird.graph.dac.model.Node
@@ -24,8 +20,15 @@ import org.sunbird.graph.utils.{NodeUtil, ScalaJsonUtils}
 import org.sunbird.managers.{HierarchyManager, UpdateHierarchyManager}
 import org.sunbird.mimetype.factory.MimeTypeManagerFactory
 import org.sunbird.mimetype.mgr.impl.H5PMimeTypeMgrImpl
+import org.sunbird.models.UploadParams
 import org.sunbird.telemetry.logger.TelemetryManager
+import org.sunbird.util.HttpUtil
 
+import java.io.{File, IOException}
+import java.net.URL
+import java.util
+import java.util.concurrent.{CompletionException, TimeUnit}
+import java.util.{Collections, UUID}
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -44,7 +47,9 @@ object CopyManager {
     private val allowedFieldsFromConfig: util.List[String] = Platform.getStringList("content.copy.mandatory.fields", new util.ArrayList[String]())
     private val copyHierarchyCreatedDelay: Long = Platform.getLong("content.copy.hierarchy.delay", 300)
     private val allowedFieldsFromConfigForAssessment: util.List[String] = Platform.getStringList("content.copy.assessment.mandatory.fields", new util.ArrayList[String]())
-
+    private val questionSetHierarchyUpdateAPI: String = Platform.getString("questionSet_hierarchy_update_api", "")
+    implicit val httpUtil: HttpUtil = new HttpUtil
+    private val questionSetHierarchyReadAPI: String = Platform.getString("questionSet_hierarchy_read_api", "")
 
     def copy(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Response] = {
         request.getContext.put(ContentConstants.COPY_SCHEME, request.getRequest.getOrDefault(ContentConstants.COPY_SCHEME, ""))
@@ -116,14 +121,14 @@ object CopyManager {
                 val originHierarchy = response.getResult.getOrDefault(ContentConstants.CONTENT, new java.util.HashMap[String, AnyRef]()).asInstanceOf[java.util.Map[String, AnyRef]]
                 copyType match {
                     case ContentConstants.COPY_TYPE_SHALLOW => updateShallowHierarchy(request, node, originNode, originHierarchy)
-                    case _ => updateHierarchy(request,node, originNode, originHierarchy, copyType)
+                    case _ => updateHierarchyV2(request,node, originNode, originHierarchy, copyType)
                 }
             }).flatMap(f=>f)
         }).flatMap(f => f) recoverWith {case e: CompletionException => throw e.getCause}
     }
 
     def updateHierarchy(request: Request, node: Node, originNode: Node, originHierarchy: util.Map[String, AnyRef], copyType:String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
-        val updateHierarchyRequest = prepareHierarchyRequestV2(originHierarchy, originNode, node, copyType, request)
+        val updateHierarchyRequest = prepareHierarchyRequest(originHierarchy, originNode, node, copyType, request)
         val hierarchyRequest = new Request(request)
         hierarchyRequest.putAll(updateHierarchyRequest)
         hierarchyRequest.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.COLLECTION_SCHEMA_NAME)
@@ -268,34 +273,6 @@ object CopyManager {
         } else new util.HashMap[String, AnyRef]()
     }
 
-    def prepareHierarchyRequestV2(originHierarchy: util.Map[String, AnyRef], originNode: Node, node: Node, copyType: String, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext):util.HashMap[String, AnyRef] = {
-        val children:util.List[util.Map[String, AnyRef]] = originHierarchy.get("children").asInstanceOf[util.List[util.Map[String, AnyRef]]]
-        if(null != children && !children.isEmpty) {
-            val nodesModified = new util.HashMap[String, AnyRef]()
-            val hierarchy = new util.HashMap[String, AnyRef]()
-            hierarchy.put(node.getIdentifier, new util.HashMap[String, AnyRef](){{
-                put(ContentConstants.CHILDREN, new util.ArrayList[String]())
-                put(ContentConstants.ROOT, true.asInstanceOf[AnyRef])
-                put(ContentConstants.CONTENT_TYPE, node.getMetadata.get(ContentConstants.CONTENT_TYPE))
-            }})
-            val result = new util.HashMap[String, AnyRef]()
-            try {
-                // Blocking call to ensure Future completes before proceeding
-                Await.result(
-                    populateHierarchyRequestV2(children, nodesModified, hierarchy, node.getIdentifier, copyType, request),
-                    Duration.create(copyHierarchyCreatedDelay, TimeUnit.SECONDS)
-                )
-                result.put(ContentConstants.NODES_MODIFIED, nodesModified)
-                result.put(ContentConstants.HIERARCHY, hierarchy)
-            } catch {
-                case ex: Exception =>
-                    ex.printStackTrace()
-            }
-
-            result
-        } else new util.HashMap[String, AnyRef]()
-    }
-
     def populateHierarchyRequest(children: util.List[util.Map[String, AnyRef]], nodesModified: util.HashMap[String, AnyRef], hierarchy: util.HashMap[String, AnyRef], parentId: String, copyType: String, request: Request): Unit = {
         if (null != children && !children.isEmpty) {
             children.asScala.toList.foreach(child => {
@@ -326,94 +303,6 @@ object CopyManager {
         }
     }
 
-    def populateHierarchyRequestV2(children: java.util.List[java.util.Map[String, AnyRef]], nodesModified: java.util.HashMap[String, AnyRef], hierarchy: java.util.HashMap[String, AnyRef], parentId: String, copyType: String, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Unit] = {
-        if (children == null || children.isEmpty) {
-            Future.successful(())
-        } else {
-            val allowedFieldsSet = Option(request.get(ContentConstants.FIELD_TO_COPY)).map(_.asInstanceOf[java.util.List[String]].asScala.toSet).getOrElse(allowedFieldsFromConfig.asScala.toSet)
-            val allowedFieldSetAssessment = allowedFieldsFromConfigForAssessment.asScala.toSet
-            val requestMetadata = Option(request.get(ContentConstants.METADATA)).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap[String, AnyRef]())
-            val futures = children.asScala.map { child =>
-                updateToCopySchemeContentType(request, child.get(ContentConstants.CONTENT_TYPE).asInstanceOf[String], child)
-                val objectType = child.get(ContentConstants.OBJECT_TYPE)
-                val cleanedMetadata = new java.util.HashMap[String, AnyRef]()
-                if (objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
-                    allowedFieldSetAssessment.foreach { key =>
-                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
-                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
-                    }
-                } else {
-                    allowedFieldsSet.foreach { key =>
-                        if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
-                        else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
-                    }
-                }
-                TelemetryManager.info("the size for allowed data cleanupdata is: " + allowedFieldsSet.size + " : the child MetdataRequest" + child.size())
-                cleanedMetadata.put(ContentConstants.CHILDREN, new java.util.ArrayList[AnyRef]())
-                internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
-                val req = new Request(request)
-                val createdBy = request.getRequest.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
-                val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, Collections.emptyList[String]()).asInstanceOf[java.util.List[String]]
-                if (StringUtils.isNotBlank(createdBy)) {
-                    cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
-                }
-                if (CollectionUtils.isNotEmpty(creatorIDs)) {
-                    cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
-                }
-                cleanedMetadata.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
-                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType)
-                if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
-                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
-                    cleanedMetadata.remove(ContentConstants.CREATOR)
-                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
-                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
-                } else if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION)) {
-                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION)
-                    cleanedMetadata.remove(ContentConstants.CREATOR)
-                    cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
-                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
-                } else {
-                    req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.CONTENT_SCHEMA_NAME)
-                    req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
-                }
-                TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + ", totalNode:" + cleanedMetadata.size())
-                req.setRequest(cleanedMetadata)
-                DataNode.create(req).flatMap { node =>
-                    val identifier = node.getIdentifier
-                    if ("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) {
-                        nodesModified.put(identifier, new java.util.HashMap[String, AnyRef]() {{
-                            put(ContentConstants.METADATA, cleanUpCopiedData(cleanedMetadata, copyType))
-                            put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
-                            put("isNew", java.lang.Boolean.TRUE)
-                            put("setDefaultValue", java.lang.Boolean.FALSE)
-                        }})
-                    }
-                    TelemetryManager.info("The childNodeId is: " + child.get("identifier") + " objectType: " + objectType + " the identifier is: " + identifier)
-                    hierarchy.get(parentId).asInstanceOf[util.Map[String, AnyRef]].get(ContentConstants.CHILDREN).asInstanceOf[util.List[String]].add(identifier)
-                    hierarchy.put(identifier, new util.HashMap[String, AnyRef]() {{
-                        put(ContentConstants.CHILDREN, new util.ArrayList[String]())
-                        put(ContentConstants.ROOT, false.asInstanceOf[AnyRef])
-                        put(ContentConstants.CONTENT_TYPE, child.get(ContentConstants.CONTENT_TYPE))
-                    }})
-                    val childChildren = child.get(ContentConstants.CHILDREN).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
-                    populateHierarchyRequestV2(childChildren, nodesModified, hierarchy, identifier, copyType, request).map(_ => ())
-                }.recoverWith {
-                    case ex: Exception =>
-                        TelemetryManager.error(s"Failed to create node for child identifier ${child.get("identifier")}: ${ex.getMessage}", ex)
-                        val failedId = Option(child.get("identifier")).getOrElse("unknown-child").toString
-                        nodesModified.put(failedId + "_error", new java.util.HashMap[String, AnyRef]() {{
-                            put("error", ex.getMessage)
-                            put("stackTrace", ex.getStackTrace.mkString("\n"))
-                        }})
-                        Future.successful(())
-                }
-            }
-            Future.sequence(futures).map(_ => ())
-        }
-    }
-
-
-
     def artifactUpload(node: Node, copiedNode: Node, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext, ss: StorageService): Future[Node] = {
         val artifactUrl = node.getMetadata.getOrDefault(ContentConstants.ARTIFACT_URL, "").asInstanceOf[String]
         val mimeType = node.getMetadata.get(ContentConstants.MIME_TYPE).asInstanceOf[String]
@@ -443,5 +332,292 @@ object CopyManager {
     def updateToCopySchemeContentType(request: Request, contentType: String, metadata: util.Map[String, AnyRef]): Unit = {
         if (StringUtils.isNotBlank(request.getContext.getOrDefault(ContentConstants.COPY_SCHEME, "").asInstanceOf[String]))
             metadata.put(ContentConstants.CONTENT_TYPE, copySchemeMap.getOrDefault(contentType, contentType))
+    }
+
+    def updateHierarchyV2(request: Request, node: Node, originNode: Node, originHierarchy: util.Map[String, AnyRef], copyType: String)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = {
+        val updateHierarchyRequest = prepareHierarchyRequestV2(originHierarchy, originNode, node, copyType, request)
+        val keysToExtract = Seq(ContentConstants.NODES_MODIFIED, ContentConstants.HIERARCHY)
+        val questionSetHierarchy: util.Map[String, AnyRef] = new util.HashMap()
+        val hierarchy = updateHierarchyRequest.get(ContentConstants.HIERARCHY).asInstanceOf[util.HashMap[String, Object]]
+        val questionSetList: util.ArrayList[String] = new util.ArrayList[String]()
+        if (MapUtils.isNotEmpty(hierarchy)) {
+            val rootObject = hierarchy.get(node.getIdentifier).asInstanceOf[util.HashMap[String, Object]]
+            if (MapUtils.isNotEmpty(rootObject)){
+                val childrens = rootObject.get(ContentConstants.CHILDREN).asInstanceOf[util.ArrayList[String]]
+                // Do the segregation for the QuestionSet Object from the Parent hierarchy
+                keysToExtract.foreach { key =>
+                    val sectionObj = updateHierarchyRequest.get(key)
+                    if (sectionObj != null && sectionObj.isInstanceOf[util.Map[_, _]]) {
+                        val section = sectionObj.asInstanceOf[util.Map[String, AnyRef]]
+                        val extracted = new util.HashMap[String, AnyRef]()
+                        val iterator = section.entrySet().iterator()
+                        while (iterator.hasNext) {
+                            val entry = iterator.next()
+                            val original = entry.getValue.asInstanceOf[util.Map[String, AnyRef]]
+                            val valueMap = new util.HashMap[String, AnyRef](original)
+                            val objectType = Option(valueMap.get("objectType")).map(_.toString).getOrElse("")
+                            if (objectType == "QuestionSet") {
+                                if (childrens.contains(entry.getKey)) {
+                                    questionSetList.add(entry.getKey)
+                                    valueMap.put(ContentConstants.ROOT, true.asInstanceOf[AnyRef])
+                                    original.put(ContentConstants.CHILDREN, new util.ArrayList[String]())
+                                } else {
+                                    iterator.remove()
+                                }
+                                extracted.put(entry.getKey, valueMap)
+                            }
+                        }
+                        if (!extracted.isEmpty) {
+                            questionSetHierarchy.put(key, extracted)
+                        }
+                    }
+                }
+            }
+        }
+
+        //Generating hierarchy update metadata for the QuestionSet object
+        extractFullHierarchies(questionSetHierarchy).foreach {
+            case (_, fullTreeMap) =>
+                val hierarchyDataNode = questionSetHierarchy.get(ContentConstants.HIERARCHY).asInstanceOf[util.Map[String, util.Map[String, Object]]]
+                val hierarchyRequest = new util.HashMap[String, Object]()
+                val hierarchy = new util.HashMap[String, Object]()
+                val nodesModified = new util.HashMap[String, Object]()
+                val requestDataMap = new util.HashMap[String, Object]()
+
+                fullTreeMap.foreach { case (key, _) =>
+                    val mapValue = hierarchyDataNode.get(key)
+                    if (mapValue.containsKey(ContentConstants.METADATA)) {
+                        if (mapValue != null) {
+                            nodesModified.put(key ,mapValue)
+                        }
+                    } else {
+                        if (mapValue != null) {
+                            hierarchy.put(key, mapValue)
+                        }
+                    }
+                }
+                hierarchyRequest.put(ContentConstants.HIERARCHY, hierarchy)
+                hierarchyRequest.put(ContentConstants.NODES_MODIFIED, nodesModified)
+                requestDataMap.put(ContentConstants.DATA, hierarchyRequest)
+                updateQuestionSetHierarchy(requestDataMap) // Call the Update QuestionSet Hierarchy API
+
+        }
+
+        val hierarchyRequest = new Request(request)
+        hierarchyRequest.putAll(updateHierarchyRequest)
+        hierarchyRequest.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.COLLECTION_SCHEMA_NAME)
+        hierarchyRequest.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+        UpdateHierarchyManager.updateHierarchy(hierarchyRequest).map(_ => node)
+    }
+
+    def prepareHierarchyRequestV2(originHierarchy: util.Map[String, AnyRef], originNode: Node, node: Node, copyType: String, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext):util.HashMap[String, AnyRef] = {
+        val children:util.List[util.Map[String, AnyRef]] = originHierarchy.get(ContentConstants.CHILDREN).asInstanceOf[util.List[util.Map[String, AnyRef]]]
+        if(null != children && !children.isEmpty) {
+            val nodesModified = new util.HashMap[String, AnyRef]()
+            val hierarchy = new util.HashMap[String, AnyRef]()
+            hierarchy.put(node.getIdentifier, new util.HashMap[String, AnyRef](){{
+                put(ContentConstants.CHILDREN, new util.ArrayList[String]())
+                put(ContentConstants.ROOT, true.asInstanceOf[AnyRef])
+                put(ContentConstants.CONTENT_TYPE, node.getMetadata.get(ContentConstants.CONTENT_TYPE))
+            }})
+            val result = new util.HashMap[String, AnyRef]()
+            try {
+                // Blocking call to ensure Future completes before proceeding
+                Await.result(
+                    populateHierarchyRequestV2(children, nodesModified, hierarchy, node.getIdentifier, copyType, request),
+                    Duration.create(copyHierarchyCreatedDelay, TimeUnit.SECONDS)
+                )
+                result.put(ContentConstants.NODES_MODIFIED, nodesModified)
+                result.put(ContentConstants.HIERARCHY, hierarchy)
+            } catch {
+                case ex: Exception =>
+                    TelemetryManager.error("Error while creating the copy: " + ex.getMessage)
+                    ex.printStackTrace()
+            }
+            result
+        } else new util.HashMap[String, AnyRef]()
+    }
+
+    def populateHierarchyRequestV2(children: java.util.List[java.util.Map[String, AnyRef]], nodesModified: java.util.HashMap[String, AnyRef], hierarchy: java.util.HashMap[String, AnyRef], parentId: String, copyType: String, request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Unit] = {
+        if (children == null || children.isEmpty) {
+            Future.successful(())
+        } else {
+            val allowedFieldsSet = Option(request.get(ContentConstants.FIELD_TO_COPY)).map(_.asInstanceOf[java.util.List[String]].asScala.toSet).getOrElse(allowedFieldsFromConfig.asScala.toSet)
+            val allowedFieldSetAssessment = allowedFieldsFromConfigForAssessment.asScala.toSet
+            val requestMetadata = Option(request.get(ContentConstants.METADATA)).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap[String, AnyRef]())
+            children.asScala.foldLeft(Future.successful(())) { (acc, child) =>
+                acc.flatMap { _ =>
+                    updateToCopySchemeContentType(request, child.get(ContentConstants.CONTENT_TYPE).asInstanceOf[String], child)
+                    val objectType = child.get(ContentConstants.OBJECT_TYPE)
+                    val cleanedMetadata = new java.util.HashMap[String, AnyRef]()
+                    if (objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                        if (child.get(ContentConstants.SCORE_CUT_OFF_TYPE).asInstanceOf[String].equalsIgnoreCase(ContentConstants.SECTIONAL_LEVEL)) {
+                            val req = new Request(request)
+                            req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
+                            req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                            req.put(ContentConstants.ROOT_ID, child.get(ContentConstants.IDENTIFIER))
+                            req.put(ContentConstants.MODE, child.get(ContentConstants.MODE))
+
+                            val response = getQuestionSetHierarchy(child.get(ContentConstants.IDENTIFIER).asInstanceOf[String])
+                            val contentObj = response.getResult.get(ContentConstants.QUESTION_SET_CAMEL_CASE)
+                            if (contentObj != null) {
+                                val originMap = contentObj.asInstanceOf[util.HashMap[String, Object]]
+                                val newChildrenList = new util.ArrayList[String]()
+                                val newChildNodes = new util.HashMap[String, util.Map[String, AnyRef]]()
+                                val childrenObj = originMap.get(ContentConstants.CHILDREN)
+                                if (childrenObj != null && childrenObj.isInstanceOf[util.ArrayList[_]]) {
+                                    val childrenList = childrenObj.asInstanceOf[util.ArrayList[_]]
+                                    for (childrenObject <- childrenList.asScala) {
+                                        val childObject = childrenObject.asInstanceOf[util.Map[String, Object]]
+                                        val newUUID = UUIDs.timeBased().toString
+                                        val newChild = new util.HashMap[String, AnyRef]()
+                                        allowedFieldSetAssessment.foreach { key =>
+                                            if (requestMetadata.containsKey(key)) newChild.put(key, requestMetadata.get(key))
+                                            else if (childObject.containsKey(key)) newChild.put(key, childObject.get(key))
+                                        }
+                                        newChildrenList.add(newUUID)
+                                        val newChildMap = new util.HashMap[String, AnyRef]()
+                                        newChildMap.put(ContentConstants.METADATA, newChild)
+                                        newChildMap.put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
+                                        newChildMap.put("isNew", java.lang.Boolean.TRUE)
+                                        newChildMap.put("setDefaultValue", java.lang.Boolean.FALSE)
+                                        newChildMap.put(ContentConstants.OBJECT_TYPE, newChild.get(ContentConstants.OBJECT_TYPE))
+
+                                        newChildNodes.put(newUUID, newChildMap)
+                                    }
+                                    child.put(ContentConstants.NEW_CHILD_METADATA, newChildNodes)
+                                    child.put(ContentConstants.NEW_CHILDREN_ID, newChildrenList)
+                                }
+                            }
+                        } else {
+                            child.remove(ContentConstants.CHILDREN)
+                        }
+                        allowedFieldSetAssessment.foreach { key =>
+                            if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                            else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                        }
+                    } else {
+                        allowedFieldsSet.foreach { key =>
+                            if (requestMetadata.containsKey(key)) cleanedMetadata.put(key, requestMetadata.get(key))
+                            else if (child.containsKey(key)) cleanedMetadata.put(key, child.get(key))
+                        }
+                    }
+                    TelemetryManager.info("the size for allowed data cleanupdata is: " + allowedFieldsSet.size + " : the child MetdataRequest" + child.size())
+                    cleanedMetadata.put(ContentConstants.CHILDREN, new java.util.ArrayList[AnyRef]())
+                    internalHierarchyProps.foreach(key => cleanedMetadata.remove(key))
+                    val req = new Request(request)
+                    val createdBy = request.getRequest.getOrDefault(ContentConstants.CREATED_BY, "").asInstanceOf[String]
+                    val creatorIDs = requestMetadata.getOrDefault(ContentConstants.CREATOR_IDS, Collections.emptyList[String]()).asInstanceOf[java.util.List[String]]
+                    if (StringUtils.isNotBlank(createdBy)) {
+                        cleanedMetadata.put(ContentConstants.CREATED_BY, createdBy)
+                    }
+                    if (CollectionUtils.isNotEmpty(creatorIDs)) {
+                        cleanedMetadata.put(ContentConstants.CREATOR_IDS, creatorIDs)
+                    }
+                    cleanedMetadata.put("code", scala.util.Random.nextInt(900000000) + 1000000000 toString)
+                    if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                        req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
+                        cleanedMetadata.remove(ContentConstants.CREATOR)
+                        cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
+                        req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                    } else if (objectType != null && objectType.isInstanceOf[String] && objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION)) {
+                        req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION)
+                        cleanedMetadata.remove(ContentConstants.CREATOR)
+                        cleanedMetadata.remove(ContentConstants.CREATOR_IDS)
+                        req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                    } else {
+                        req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.CONTENT_SCHEMA_NAME)
+                        req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
+                    }
+                    req.setRequest(cleanedMetadata)
+                    DataNode.create(req).flatMap { node =>
+                        val identifier = node.getIdentifier
+                        if (("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) &&
+                          !objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
+                            nodesModified.put(identifier, new java.util.HashMap[String, AnyRef]() {{
+                                put(ContentConstants.METADATA, cleanUpCopiedData(cleanedMetadata, copyType))
+                                put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
+                                put("isNew", java.lang.Boolean.TRUE)
+                                put("setDefaultValue", java.lang.Boolean.FALSE)
+                            }})
+                        }
+
+                        hierarchy.get(parentId).asInstanceOf[util.Map[String, AnyRef]].get(ContentConstants.CHILDREN).asInstanceOf[util.List[String]].add(identifier)
+                        hierarchy.put(identifier, new util.LinkedHashMap[String, AnyRef]() {{
+                            put(ContentConstants.CHILDREN, new util.ArrayList[String]())
+                            put(ContentConstants.ROOT, false.asInstanceOf[AnyRef])
+                            put(ContentConstants.CONTENT_TYPE, child.get(ContentConstants.CONTENT_TYPE))
+                            put(ContentConstants.OBJECT_TYPE, node.getMetadata.get(ContentConstants.OBJECT_TYPE))
+                        }})
+                        if (child.get(ContentConstants.NEW_CHILD_METADATA) != null && child.get(ContentConstants.NEW_CHILDREN_ID) != null) {
+                            hierarchy.get(identifier).asInstanceOf[util.Map[String, AnyRef]].get(ContentConstants.CHILDREN).asInstanceOf[util.List[String]].
+                              addAll(child.get(ContentConstants.NEW_CHILDREN_ID).asInstanceOf[util.List[String]])
+                            nodesModified.putAll(child.get(ContentConstants.NEW_CHILD_METADATA).asInstanceOf[java.util.Map[String, AnyRef]])
+                            child.remove(ContentConstants.NEW_CHILDREN_ID)
+                            child.remove(ContentConstants.NEW_CHILD_METADATA)
+                            child.remove(ContentConstants.CHILDREN)
+                        }
+                        val childChildren = child.get(ContentConstants.CHILDREN).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+                        populateHierarchyRequestV2(childChildren, nodesModified, hierarchy, identifier, copyType, request).map(_ => ())
+                    }.recoverWith {
+                        case ex: Exception =>
+                            TelemetryManager.error(s"Failed to create node for child identifier ${child.get("identifier")}: ${ex.getMessage}", ex)
+                            val failedId = Option(child.get("identifier")).getOrElse("unknown-child").toString
+                            nodesModified.put(failedId + "_error", new java.util.HashMap[String, AnyRef]() {{
+                                put("error", ex.getMessage)
+                                put("stackTrace", ex.getStackTrace.mkString("\n"))
+                            }})
+                            Future.successful(())
+                    }
+                }
+            }
+        }
+    }
+
+    def updateQuestionSetHierarchy(questionSetMetData: util.Map[String, Object])(implicit httpUtil: HttpUtil): String = {
+        val requestData = new util.HashMap[String, AnyRef]()
+        requestData.put("request", questionSetMetData)
+        val httpResponse = httpUtil.patch(questionSetHierarchyUpdateAPI, new ObjectMapper().writeValueAsString(requestData))
+        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while fetching object categories for additional category list.")
+        "ok"
+
+    }
+
+    def extractFullHierarchies(data: util.Map[String, AnyRef]): Map[String, Map[String, AnyRef]] = {
+        val hierarchyDataNode = data.get(ContentConstants.HIERARCHY).asInstanceOf[util.Map[String, AnyRef]]
+        val dataNode = data.get(ContentConstants.NODES_MODIFIED).asInstanceOf[util.Map[String, AnyRef]]
+        if (MapUtils.isNotEmpty(dataNode)) {
+            hierarchyDataNode.putAll(dataNode);
+        }
+        def collectAllDescendants(nodeId: String, acc: Map[String, Map[String, AnyRef]]): Map[String, Map[String, AnyRef]] = {
+            if (acc.contains(nodeId)) acc
+            else {
+                val rawNode = hierarchyDataNode.get(nodeId).asInstanceOf[util.Map[String, AnyRef]]
+                val nodeMap = rawNode.asScala.toMap
+                val updatedAcc = acc + (nodeId -> nodeMap)
+
+                val children = rawNode.get("children") match {
+                    case list: util.List[_] => list.asScala.collect { case id: String => id }
+                    case _ => Seq.empty
+                }
+
+                children.foldLeft(updatedAcc) { case (mapAcc, childId) =>
+                    collectAllDescendants(childId, mapAcc)
+                }
+            }
+        }
+        hierarchyDataNode.asScala.collect {
+            case (id, rawNode: util.Map[_, _])
+                if rawNode.get("root") == java.lang.Boolean.TRUE =>
+                val fullHierarchy = collectAllDescendants(id, Map.empty)
+                id -> fullHierarchy
+        }.toMap
+    }
+
+    def getQuestionSetHierarchy(identifier: String)(implicit httpUtil: HttpUtil):  Response= {
+        val httpResponse = httpUtil.get(questionSetHierarchyReadAPI + identifier)
+        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while fetching object categories for additional category list.")
+        val response: Response = JsonUtils.deserialize(httpResponse.body, classOf[Response])
+        response
     }
 }

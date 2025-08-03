@@ -63,4 +63,10 @@ object ContentConstants {
     val QUESTION_SET: String = "questionset";
     val QUESTION: String = "question";
     val CREATOR: String = "creator";
+    val QUESTION_SET_CAMEL_CASE: String = "questionSet";
+    val SCORE_CUT_OFF_TYPE: String = "scoreCutoffType";
+    val SECTIONAL_LEVEL: String = "SectionLevel";
+    val DATA: String = "data"
+    val NEW_CHILD_METADATA: String = "newChildMetadata";
+    val NEW_CHILDREN_ID : String = "newChildrenId"
 }

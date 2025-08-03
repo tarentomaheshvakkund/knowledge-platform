@@ -532,8 +532,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				contentMap.put("organisation", organisation)
 				contentMap.put("creatorContacts", creatorContacts)
 				contentMap.put("name", name + " - " + lang.capitalize)
-				contentMap.put("posterImage", posterImage)
 				contentMap.put("appIcon", appIcon)
+				contentMap.put("posterImage", posterImage)
 
 				val createRequest = new Request()
 				createRequest.setOperation("createContent")
