@@ -376,32 +376,35 @@ object CopyManager {
         }
 
         //Generating hierarchy update metadata for the QuestionSet object
-        extractFullHierarchies(questionSetHierarchy).foreach {
-            case (_, fullTreeMap) =>
-                val hierarchyDataNode = questionSetHierarchy.get(ContentConstants.HIERARCHY).asInstanceOf[util.Map[String, util.Map[String, Object]]]
-                val hierarchyRequest = new util.HashMap[String, Object]()
-                val hierarchy = new util.HashMap[String, Object]()
-                val nodesModified = new util.HashMap[String, Object]()
-                val requestDataMap = new util.HashMap[String, Object]()
+        if (MapUtils.isNotEmpty(questionSetHierarchy)) {
+            extractFullHierarchies(questionSetHierarchy).foreach {
+                case (_, fullTreeMap) =>
+                    val hierarchyDataNode = questionSetHierarchy.get(ContentConstants.HIERARCHY).asInstanceOf[util.Map[String, util.Map[String, Object]]]
+                    val hierarchyRequest = new util.HashMap[String, Object]()
+                    val hierarchy = new util.HashMap[String, Object]()
+                    val nodesModified = new util.HashMap[String, Object]()
+                    val requestDataMap = new util.HashMap[String, Object]()
 
-                fullTreeMap.foreach { case (key, _) =>
-                    val mapValue = hierarchyDataNode.get(key)
-                    if (mapValue.containsKey(ContentConstants.METADATA)) {
-                        if (mapValue != null) {
-                            nodesModified.put(key ,mapValue)
-                        }
-                    } else {
-                        if (mapValue != null) {
-                            hierarchy.put(key, mapValue)
+                    fullTreeMap.foreach { case (key, _) =>
+                        val mapValue = hierarchyDataNode.get(key)
+                        if (mapValue.containsKey(ContentConstants.METADATA)) {
+                            if (mapValue != null) {
+                                nodesModified.put(key ,mapValue)
+                            }
+                        } else {
+                            if (mapValue != null) {
+                                hierarchy.put(key, mapValue)
+                            }
                         }
                     }
-                }
-                hierarchyRequest.put(ContentConstants.HIERARCHY, hierarchy)
-                hierarchyRequest.put(ContentConstants.NODES_MODIFIED, nodesModified)
-                requestDataMap.put(ContentConstants.DATA, hierarchyRequest)
-                updateQuestionSetHierarchy(requestDataMap) // Call the Update QuestionSet Hierarchy API
+                    hierarchyRequest.put(ContentConstants.HIERARCHY, hierarchy)
+                    hierarchyRequest.put(ContentConstants.NODES_MODIFIED, nodesModified)
+                    requestDataMap.put(ContentConstants.DATA, hierarchyRequest)
+                    updateQuestionSetHierarchy(requestDataMap) // Call the Update QuestionSet Hierarchy API
 
+            }
         }
+
 
         val hierarchyRequest = new Request(request)
         hierarchyRequest.putAll(updateHierarchyRequest)
@@ -411,7 +414,7 @@ object CopyManager {
     }
 
     def prepareHierarchyRequestV2(originHierarchy: util.Map[String, AnyRef], originNode: Node, node: Node, copyType: String, request: Request)(implicit ec:ExecutionContext, oec: OntologyEngineContext):util.HashMap[String, AnyRef] = {
-        val children:util.List[util.Map[String, AnyRef]] = originHierarchy.get(ContentConstants.CHILDREN).asInstanceOf[util.List[util.Map[String, AnyRef]]]
+        val children:util.List[util.Map[String, AnyRef]] = originHierarchy.getOrDefault(ContentConstants.CHILDREN, new util.ArrayList[util.Map[String, AnyRef]]()).asInstanceOf[util.List[util.Map[String, AnyRef]]]
         if(null != children && !children.isEmpty) {
             val nodesModified = new util.HashMap[String, AnyRef]()
             val hierarchy = new util.HashMap[String, AnyRef]()
@@ -584,34 +587,38 @@ object CopyManager {
     }
 
     def extractFullHierarchies(data: util.Map[String, AnyRef]): Map[String, Map[String, AnyRef]] = {
-        val hierarchyDataNode = data.get(ContentConstants.HIERARCHY).asInstanceOf[util.Map[String, AnyRef]]
-        val dataNode = data.get(ContentConstants.NODES_MODIFIED).asInstanceOf[util.Map[String, AnyRef]]
+        val hierarchyDataNode = data.getOrDefault(ContentConstants.HIERARCHY, new util.HashMap[String, AnyRef]()).asInstanceOf[util.Map[String, AnyRef]]
+        val dataNode = data.getOrDefault(ContentConstants.NODES_MODIFIED, new util.HashMap[String, AnyRef]()).asInstanceOf[util.Map[String, AnyRef]]
         if (MapUtils.isNotEmpty(dataNode)) {
             hierarchyDataNode.putAll(dataNode);
         }
-        def collectAllDescendants(nodeId: String, acc: Map[String, Map[String, AnyRef]]): Map[String, Map[String, AnyRef]] = {
-            if (acc.contains(nodeId)) acc
-            else {
-                val rawNode = hierarchyDataNode.get(nodeId).asInstanceOf[util.Map[String, AnyRef]]
-                val nodeMap = rawNode.asScala.toMap
-                val updatedAcc = acc + (nodeId -> nodeMap)
+        if (MapUtils.isNotEmpty(hierarchyDataNode)) {
+            def collectAllDescendants(nodeId: String, acc: Map[String, Map[String, AnyRef]]): Map[String, Map[String, AnyRef]] = {
+                if (acc.contains(nodeId)) acc
+                else {
+                    val rawNode = hierarchyDataNode.get(nodeId).asInstanceOf[util.Map[String, AnyRef]]
+                    val nodeMap = rawNode.asScala.toMap
+                    val updatedAcc = acc + (nodeId -> nodeMap)
 
-                val children = rawNode.get("children") match {
-                    case list: util.List[_] => list.asScala.collect { case id: String => id }
-                    case _ => Seq.empty
-                }
+                    val children = rawNode.get("children") match {
+                        case list: util.List[_] => list.asScala.collect { case id: String => id }
+                        case _ => Seq.empty
+                    }
 
-                children.foldLeft(updatedAcc) { case (mapAcc, childId) =>
-                    collectAllDescendants(childId, mapAcc)
+                    children.foldLeft(updatedAcc) { case (mapAcc, childId) =>
+                        collectAllDescendants(childId, mapAcc)
+                    }
                 }
             }
+            hierarchyDataNode.asScala.collect {
+                case (id, rawNode: util.Map[_, _])
+                    if rawNode.get("root") == java.lang.Boolean.TRUE =>
+                    val fullHierarchy = collectAllDescendants(id, Map.empty)
+                    id -> fullHierarchy
+            }.toMap
+        } else {
+            Map.empty[String, Map[String, AnyRef]]
         }
-        hierarchyDataNode.asScala.collect {
-            case (id, rawNode: util.Map[_, _])
-                if rawNode.get("root") == java.lang.Boolean.TRUE =>
-                val fullHierarchy = collectAllDescendants(id, Map.empty)
-                id -> fullHierarchy
-        }.toMap
     }
 
     def getQuestionSetHierarchy(identifier: String)(implicit httpUtil: HttpUtil):  Response= {
