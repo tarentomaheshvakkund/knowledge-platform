@@ -69,4 +69,5 @@ object ContentConstants {
     val DATA: String = "data"
     val NEW_CHILD_METADATA: String = "newChildMetadata";
     val NEW_CHILDREN_ID : String = "newChildrenId"
+    val ASSESSMENT_LEVEL: String = "AssessmentLevel";
 }

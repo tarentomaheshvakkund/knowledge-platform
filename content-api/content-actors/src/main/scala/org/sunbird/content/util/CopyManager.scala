@@ -454,7 +454,8 @@ object CopyManager {
                     val objectType = child.get(ContentConstants.OBJECT_TYPE)
                     val cleanedMetadata = new java.util.HashMap[String, AnyRef]()
                     if (objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
-                        if (child.get(ContentConstants.SCORE_CUT_OFF_TYPE).asInstanceOf[String].equalsIgnoreCase(ContentConstants.SECTIONAL_LEVEL)) {
+                        if (child.get(ContentConstants.SCORE_CUT_OFF_TYPE).asInstanceOf[String].equalsIgnoreCase(ContentConstants.SECTIONAL_LEVEL) ||
+                                child.get(ContentConstants.SCORE_CUT_OFF_TYPE).asInstanceOf[String].equalsIgnoreCase(ContentConstants.ASSESSMENT_LEVEL)) {
                             val req = new Request(request)
                             req.getContext.put(ContentConstants.SCHEMA_NAME, ContentConstants.QUESTION_SET)
                             req.getContext.put(ContentConstants.VERSION, ContentConstants.SCHEMA_VERSION)
