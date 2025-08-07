@@ -393,6 +393,7 @@ object CopyManager {
                             }
                         } else {
                             if (mapValue != null) {
+                                mapValue.put(ContentConstants.ROOT, true.asInstanceOf[AnyRef])
                                 hierarchy.put(key, mapValue)
                             }
                         }
@@ -572,13 +573,15 @@ object CopyManager {
         val requestData = new util.HashMap[String, AnyRef]()
         requestData.put("request", questionSetMetData)
         val httpResponse = httpUtil.patch(questionSetHierarchyUpdateAPI, new ObjectMapper().writeValueAsString(requestData))
-        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while fetching object categories for additional category list.")
+        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while udapting the questionSetHierarchy Impl.")
         "ok"
 
     }
 
     def extractFullHierarchies(data: util.Map[String, AnyRef]): Map[String, Map[String, AnyRef]] = {
+        val hierarchyNode = new util.HashMap[String, AnyRef]()
         val hierarchyDataNode = data.getOrDefault(ContentConstants.HIERARCHY, new util.HashMap[String, AnyRef]()).asInstanceOf[util.Map[String, AnyRef]]
+        hierarchyNode.putAll(hierarchyDataNode)
         val dataNode = data.getOrDefault(ContentConstants.NODES_MODIFIED, new util.HashMap[String, AnyRef]()).asInstanceOf[util.Map[String, AnyRef]]
         if (MapUtils.isNotEmpty(dataNode)) {
             hierarchyDataNode.putAll(dataNode);
@@ -601,9 +604,9 @@ object CopyManager {
                     }
                 }
             }
-            hierarchyDataNode.asScala.collect {
+            hierarchyNode.asScala.collect {
                 case (id, rawNode: util.Map[_, _])
-                    if rawNode.get("root") == java.lang.Boolean.TRUE =>
+                    if rawNode.get("root") == java.lang.Boolean.TRUE || CollectionUtils.isNotEmpty(rawNode.get("children").asInstanceOf[util.List[_]])=>
                     val fullHierarchy = collectAllDescendants(id, Map.empty)
                     id -> fullHierarchy
             }.toMap
@@ -614,7 +617,7 @@ object CopyManager {
 
     def getQuestionSetHierarchy(identifier: String)(implicit httpUtil: HttpUtil):  Response= {
         val httpResponse = httpUtil.get(questionSetHierarchyReadAPI + identifier)
-        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while fetching object categories for additional category list.")
+        if (200 != httpResponse.status) throw new ServerException("ERR_FETCHING_OBJECT_CATEGORY", "Error while fetching object for questionSet Categories.")
         val response: Response = JsonUtils.deserialize(httpResponse.body, classOf[Response])
         response
     }
