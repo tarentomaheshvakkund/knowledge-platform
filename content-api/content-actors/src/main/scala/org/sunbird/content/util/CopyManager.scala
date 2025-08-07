@@ -536,16 +536,6 @@ object CopyManager {
                     req.setRequest(cleanedMetadata)
                     DataNode.create(req).flatMap { node =>
                         val identifier = node.getIdentifier
-                        if (("Parent".equalsIgnoreCase(child.get(ContentConstants.VISIBILITY).asInstanceOf[String])) &&
-                          !objectType.asInstanceOf[String].equalsIgnoreCase(ContentConstants.QUESTION_SET)) {
-                            nodesModified.put(identifier, new java.util.HashMap[String, AnyRef]() {{
-                                put(ContentConstants.METADATA, cleanUpCopiedData(cleanedMetadata, copyType))
-                                put(ContentConstants.ROOT, java.lang.Boolean.FALSE)
-                                put("isNew", java.lang.Boolean.TRUE)
-                                put("setDefaultValue", java.lang.Boolean.FALSE)
-                            }})
-                        }
-
                         hierarchy.get(parentId).asInstanceOf[util.Map[String, AnyRef]].get(ContentConstants.CHILDREN).asInstanceOf[util.List[String]].add(identifier)
                         hierarchy.put(identifier, new util.LinkedHashMap[String, AnyRef]() {{
                             put(ContentConstants.CHILDREN, new util.ArrayList[String]())
