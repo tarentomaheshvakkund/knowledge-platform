@@ -317,7 +317,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
-				syncLanguageMapAfterReview(identifier)
+				syncLanguageMapStatus(identifier, "Review")
 			}
 		}).flatMap(f => f)
 	}
@@ -424,6 +424,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 
 	def rejectContent(request: Request): Future[Response] = {
 		RequestUtil.validateRequest(request)
+		val id: String = request.getContext.getOrDefault("identifier", "").asInstanceOf[String]
 		DataNode.read(request).map(node => {
 			val status = node.getMetadata.get("status").asInstanceOf[String]
 			if (StringUtils.isBlank(status))
@@ -458,7 +459,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				}
 				ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
 			})
-		}).flatMap(f => f)
+		}).flatMap(identifier => syncLanguageMapStatus(id, "Draft"))
 	}
 
 	def adminRead(request: Request): Future[Response] = {
@@ -634,8 +635,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
   		}
 	}
 
-	def syncLanguageMapAfterReview(identifier: String): Future[Response] = {
-		logger.info("ContentActor: syncLanguageMapAfterReview called for identifier: " + identifier)
+	private def syncLanguageMapStatus(identifier: String, status: String): Future[Response] = {
+		logger.info("ContentActor: syncLanguageMapStatus called for identifier: " + identifier + " with status: " + status)
 		val confirmReadReq = new Request()
 		confirmReadReq.setContext(new java.util.HashMap[String, AnyRef]() {{
 			put("graph_id", "domain")
@@ -648,14 +649,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		confirmReadReq.put("mode", "edit")
 
 		DataNode.read(confirmReadReq).flatMap { confirmedNode =>
-			val latestStatus = "Review"
 			val languageMapRaw = confirmedNode.getMetadata.getOrDefault("languageMapV1", new util.HashMap[String, AnyRef]())
 			val languageMap = languageMapRaw match {
 				case s: String => JsonUtils.deserialize(s, classOf[java.util.Map[String, AnyRef]])
 				case m: java.util.Map[_, _] => m.asInstanceOf[java.util.Map[String, AnyRef]]
 				case _ => new util.HashMap[String, AnyRef]()
 			}
-			logger.info("ContentActor: syncLanguageMapAfterReview - latestStatus: " + latestStatus + ", languageMap: " + languageMap)
+			logger.info("ContentActor: syncLanguageMapStatus - latestStatus: " + status + ", languageMap: " + languageMap)
 			if (MapUtils.isNotEmpty(languageMap)) {
 				val updatedLanguageMap = new util.HashMap[String, AnyRef]()
 				val updatedBaseLanguageMap = new util.HashMap[String, AnyRef]()
@@ -701,13 +701,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 								val entryMap = new util.HashMap[String, AnyRef]()
 								entryMap.putAll(entry.asInstanceOf[java.util.Map[String, AnyRef]])
 								if (identifier == entryMap.get("id")) {
-									entryMap.put("status", latestStatus)
+									entryMap.put("status", status)
 								}
 								updatedLanguageMap.put(lang.toLowerCase, entryMap)
 							}
 						})
-						logger.info("ContentActor: syncLanguageMapAfterReview - after language update latestStatus: " + latestStatus + ", updatedLanguageMap: " + updatedLanguageMap + " , updatedLanguageBasemAO" + updatedBaseLanguageMap)
-						logger.info("ContentActor: syncLanguageMapAfterReview called for baseLangId: " + id)
+						logger.info("ContentActor: syncLanguageMapStatus - after language update latestStatus: " + status + ", updatedLanguageMap: " + updatedLanguageMap + " , updatedLanguageBasemAO" + updatedBaseLanguageMap)
+						logger.info("ContentActor: syncLanguageMapStatus called for baseLangId: " + id)
 						val updateReq = new Request()
 						updateReq.setOperation("systemUpdate")
 						updateReq.setRequest(new util.HashMap[String, AnyRef]() {

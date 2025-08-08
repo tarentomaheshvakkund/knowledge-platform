@@ -96,56 +96,56 @@ object DiscardManager {
                 v.asInstanceOf[util.Map[String, AnyRef]].get("id").asInstanceOf[String]
             }
 
-            val discardLangOpt = languageMap.entrySet().find(e => {
-            val value = e.getValue
-            value match {
-                case map: util.Map[_, _] =>
-                map.asInstanceOf[util.Map[String, AnyRef]].get("id") == discardedId
-                case _ => false
-            }
-            }).map(_.getKey)
+            val updateFutures = targets.map { id =>
+                val readNodeReq = new Request()
+                readNodeReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+                    put("graph_id", "domain")
+                    put("version", "1.0")
+                    put("objectType", "Content")
+                    put("schemaName", "content")
+                }})
+                readNodeReq.put("objectType", "Content")
+                readNodeReq.put("fields", new util.ArrayList[String]())
+                readNodeReq.put("identifier", id)
+                readNodeReq.put("mode", "read")
 
-            discardLangOpt match {
-                case Some(discardLang) =>
-                    val updateFutures = targets.map { id =>
-                    val readNodeReq = new Request()
-                    readNodeReq.setContext(new java.util.HashMap[String, AnyRef]() {{
-                        put("graph_id", "domain")
-                        put("version", "1.0")
-                        put("objectType", "Content")
-                        put("schemaName", "content")
-                    }})
-                    readNodeReq.put("objectType", "Content")
-                    readNodeReq.put("fields", new util.ArrayList[String]())
-                    readNodeReq.put("identifier", id)
-                    readNodeReq.put("mode", "read")
+                DataNode.read(readNodeReq).flatMap { node =>
+                    val nodeMetadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, null, readReq.getContext.get("schemaName").asInstanceOf[String], readReq.getContext.get("version").asInstanceOf[String])
+                    val versionKey = nodeMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
+                    val langMap = nodeMetadata.get("languageMapV1").asInstanceOf[util.Map[String, AnyRef]]
+                    val discardLangOpt = langMap.entrySet().find(e => {
+                        val value = e.getValue
+                        value match {
+                            case map: util.Map[_, _] =>
+                                map.asInstanceOf[util.Map[String, AnyRef]].get("id") == discardedId
+                            case _ => false
+                        }
+                    }).map(_.getKey)
+                    discardLangOpt match {
+                        case Some(discardLang) =>
+                            langMap.remove(discardLang)
+                        case None =>
+                            Future.successful(())
+                    }
 
-                    DataNode.read(readNodeReq).flatMap { node =>
-                        val nodeMetadata: util.Map[String, AnyRef] = NodeUtil.serialize(discardedNode, null, readReq.getContext.get("schemaName").asInstanceOf[String], readReq.getContext.get("version").asInstanceOf[String])
-                        val versionKey = nodeMetadata.getOrDefault("versionKey", "").asInstanceOf[String]
-                        val langMap = nodeMetadata.get("languageMapV1").asInstanceOf[util.Map[String, AnyRef]]
-                        langMap.remove(discardLang)
-
-                        val updateReq = new Request()
-                        updateReq.setOperation("systemUpdate")
-                        updateReq.setRequest(new util.HashMap[String, AnyRef]() {{
+                    val updateReq = new Request()
+                    updateReq.setOperation("systemUpdate")
+                    updateReq.setRequest(new util.HashMap[String, AnyRef]() {{
                         put("languageMapV1", langMap)
                         put("versionKey", versionKey)
-                        }})
-                        updateReq.setContext(new util.HashMap[String, AnyRef]() {{
+                    }})
+                    updateReq.setContext(new util.HashMap[String, AnyRef]() {{
                         put("graph_id", "domain")
                         put("version", "1.0")
                         put("objectType", "Content")
                         put("schemaName", "content")
                         put("identifier", id)
-                        }})
-                        RedisCache.delete(id)
-                        DataNode.systemUpdate(updateReq, util.Arrays.asList(node),"", None)
-                    }
-                    }
-                    Future.sequence(updateFutures).map(_ => ())
-                case None => Future.successful(())
+                    }})
+                    RedisCache.delete(id)
+                    DataNode.systemUpdate(updateReq, util.Arrays.asList(node),"", None)
+                }
             }
+            Future.sequence(updateFutures).map(_ => ())
         }
     }
 }
