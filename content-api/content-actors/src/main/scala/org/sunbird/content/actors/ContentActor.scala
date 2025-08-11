@@ -213,6 +213,16 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		}
 		DataNode.update(request, dataModifier).map(node => {
 			val identifier: String = node.getIdentifier.replace(".img", "")
+			val courseCategory = node.getMetadata.get(ContentConstants.COURSE_CATEGORY).asInstanceOf[String]
+			logger.info("The courseCategory is: " + courseCategory)
+			if (StringUtils.isNotBlank(courseCategory) && courseCategory.equalsIgnoreCase(ContentConstants.MULTILINGUAL_COURSE)) {
+				val status: String = request.getRequest.getOrDefault("status", "").asInstanceOf[String]
+				if (StringUtils.isNotBlank(status)) {
+					syncLanguageMapStatus(identifier, status)
+				} else {
+					logger.info("The status is not present into the requestMap: " + identifier)
+				}
+			}
 			if (request.getContext.getOrDefault("sendNotification", Boolean.box(false)).asInstanceOf[Boolean]) {
 				try {
 					NotificationManager.sendNotification(
@@ -317,8 +327,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
-				syncLanguageMapStatus(identifier, "Review")
+				val courseCategory = node.getMetadata.get(ContentConstants.COURSE_CATEGORY).asInstanceOf[String]
+				logger.info("The courseCategory inside review method is: " + courseCategory)
+				if (StringUtils.isNotBlank(courseCategory) && courseCategory.equalsIgnoreCase(ContentConstants.MULTILINGUAL_COURSE)) {
+					syncLanguageMapStatus(identifier, "Review")
+				}
 			}
+			Future.successful(ResponseHandler.OK())
 		}).flatMap(f => f)
 	}
 
@@ -457,9 +472,14 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
+				val courseCategory = node.getMetadata.get(ContentConstants.COURSE_CATEGORY).asInstanceOf[String]
+				logger.info("The courseCategory inside reject method is: " + courseCategory)
+				if (StringUtils.isNotBlank(courseCategory) && courseCategory.equalsIgnoreCase(ContentConstants.MULTILINGUAL_COURSE)) {
+						syncLanguageMapStatus(identifier, "Draft")
+				}
 				ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
 			})
-		}).flatMap(identifier => syncLanguageMapStatus(id, "Draft"))
+		}).flatMap(f => f)
 	}
 
 	def adminRead(request: Request): Future[Response] = {
