@@ -101,6 +101,7 @@ PATCH     /content/v4/system/update/:identifier    controllers.v4.ContentControl
 POST      /content/v4/review/:identifier           controllers.v4.ContentController.review(identifier:String)
 POST      /content/v4/reject/:identifier           controllers.v4.ContentController.reviewReject(identifier:String)
 POST      /content/v4/mlcreate                     controllers.v4.ContentController.createMLContent
+POST      /content/v4/ml/review                     controllers.v4.ContentController.reviewMLContent
 
 # App v4 APIs
 POST      /app/v4/register                          controllers.v4.AppController.register

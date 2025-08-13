@@ -142,6 +142,7 @@ object DiscardManager {
                         put("identifier", id)
                     }})
                     RedisCache.delete(id)
+                    RedisCache.delete(ContentConstants.HIERARCHY_PREFIX + id)
                     DataNode.systemUpdate(updateReq, util.Arrays.asList(node),"", None)
                 }
             }

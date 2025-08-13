@@ -103,4 +103,6 @@ object ApiId {
 	val REJECT_EVENT = "api.event.review.reject"
 
 	val CREATE_ML_CONTENT = "api.content.ml.create"
+
+	val REVIEW_ML_CONTENT = "api.content.ml.review"
 }
