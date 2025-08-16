@@ -65,6 +65,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "adminReadContent" => adminRead(request)
 			case "createMLContent" => createMLContent(request)
 			case "reviewMLContent" => reviewMLContent(request)
+			case "updateReviewStatusMLContent" => updateReviewStatusMLContent(request)
 			case _ => ERROR(request.getOperation)
 		}
 	}
@@ -831,5 +832,46 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				}
 			}
 			.map(_ => ResponseHandler.OK())
+	}
+
+	def updateReviewStatusMLContent(request: Request)(implicit ec: ExecutionContext): Future[Response] = {
+
+		val identifiers: List[String] = request.getRequest.getOrDefault("identifier", List.empty[String]) match {
+			case s: String if StringUtils.isNotBlank(s) => List(s)
+			case arr: Array[String]                     => arr.toList
+			case list: java.util.List[_]                => list.asScala.toList.map(_.toString)
+			case _                                      => List.empty[String]
+		}
+
+		identifiers.foldLeft(Future.successful(Map.empty[String, AnyRef])) { (accFut, identifier) =>
+			for {
+				acc <- accFut
+				node <- {
+					val readReq = new Request(request)
+					readReq.put("identifier", identifier)
+					readReq.put("mode", "edit")
+					DataNode.read(readReq)
+				}
+				updateResponse <- {
+					val updateReq = new Request(request)
+					updateReq.put("identifier", identifier)
+					updateReq.put("reviewStatus", request.getRequest.getOrDefault("reviewStatus", "Reviewed"))
+					updateReq.put("status", request.getRequest.getOrDefault("status", "Review"))
+					updateReq.getRequest.put(ContentConstants.IDENTIFIER, identifier)
+					updateReq.getContext.put(ContentConstants.IDENTIFIER, identifier)
+					updateReq.getRequest.put(ContentConstants.VERSION_KEY, node.getMetadata.get(ContentConstants.VERSION_KEY))
+					updateReq.getContext.put("sendNotification", Boolean.box(true))
+					updateReq.setOperation("updateReviewStatusMLContent")
+					update(updateReq) // Future[Response]
+				}
+			} yield {
+				val nodeMap = new java.util.HashMap[String, AnyRef]()
+				val responseMap = updateResponse.getResult
+				nodeMap.put("response", if (MapUtils.isNotEmpty(responseMap)) responseMap else new util.HashMap())
+				acc + (identifier -> nodeMap)
+			}
+		}.map { resultMap =>
+			ResponseHandler.OK().putAll(resultMap.asJava)
+		}
 	}
 }
