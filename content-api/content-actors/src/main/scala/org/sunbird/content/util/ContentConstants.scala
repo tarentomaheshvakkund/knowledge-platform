@@ -72,4 +72,5 @@ object ContentConstants {
     val ASSESSMENT_LEVEL: String = "AssessmentLevel";
     val COURSE_CATEGORY: String = "courseCategory";
     val MULTILINGUAL_COURSE : String = "Multilingual Course";
+    val LEARNING_RESOURCE: String = "Learning Resource";
 }
