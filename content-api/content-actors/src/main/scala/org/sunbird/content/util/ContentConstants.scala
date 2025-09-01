@@ -73,4 +73,11 @@ object ContentConstants {
     val COURSE_CATEGORY: String = "courseCategory";
     val MULTILINGUAL_COURSE : String = "Multilingual Course";
     val LEARNING_RESOURCE: String = "Learning Resource";
+    val REVIEWED: String = "Reviewed";
+    val REVIEW_STATUS: String = "reviewStatus";
+    val NAME: String = "name";
+    val ID: String = "id";
+    val CONTENT_EDITED: String = "CONTENT_EDITED";
+    val UPDATE: String = "UPDATE";
+    val SEND_TO_PUBLISH: String = "SentToPublish";
 }
