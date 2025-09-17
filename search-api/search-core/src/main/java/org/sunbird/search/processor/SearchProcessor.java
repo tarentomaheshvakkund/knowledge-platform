@@ -294,18 +294,18 @@ public class SearchProcessor {
 					if (nonTextFields.contains(groupByParent)) {
 						termBuilder = AggregationBuilders.terms(groupByParent)
 								.field(groupByParent)
-								.size(ElasticSearchUtil.defaultResultLimit);
+								.size(ElasticSearchUtil.defaultAggregationResultLimit);
 					}else {
 						termBuilder = AggregationBuilders.terms(groupByParent)
 								.field(groupByParent + SearchConstants.RAW_FIELD_EXTENSION)
-								.size(ElasticSearchUtil.defaultResultLimit);
+								.size(ElasticSearchUtil.defaultAggregationResultLimit);
 					}
 				List<String> groupByChildList = (List<String>) groupByMap.get("groupByChildList");
 				if (groupByChildList != null && !groupByChildList.isEmpty()) {
 					for (String childGroupBy : groupByChildList) {
 						termBuilder.subAggregation(AggregationBuilders.terms(childGroupBy)
 								.field(childGroupBy + SearchConstants.RAW_FIELD_EXTENSION)
-								.size(ElasticSearchUtil.defaultResultLimit));
+								.size(ElasticSearchUtil.defaultAggregationResultLimit));
 					}
 				}
 				searchSourceBuilder.aggregation(termBuilder);
@@ -325,7 +325,7 @@ public class SearchProcessor {
 					for (String nestedValue : mapData.getValue()) {
 						termBuilder = AggregationBuilders.terms(nestedValue)
 								.field(mapData.getKey() + "." + nestedValue + SearchConstants.RAW_FIELD_EXTENSION)
-								.size(ElasticSearchUtil.defaultResultLimit);
+								.size(ElasticSearchUtil.defaultAggregationResultLimit);
 						nestedAggregationBuilder.subAggregation(termBuilder);
 					}
 					searchSourceBuilder.aggregation(nestedAggregationBuilder);
@@ -845,7 +845,7 @@ public class SearchProcessor {
 			for(Map<String, Object> aggregate: aggregations){
 				TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String)aggregate.get("l1"))
 						.field(aggregate.get("l1") + SearchConstants.RAW_FIELD_EXTENSION)
-						.size(ElasticSearchUtil.defaultResultLimit);
+						.size(ElasticSearchUtil.defaultAggregationResultLimit);
 				int level = 2;
 				termBuilder.subAggregation(getNextLevelAggregation(aggregate, level));
 				searchSourceBuilder.aggregation(termBuilder);
@@ -856,7 +856,7 @@ public class SearchProcessor {
 	private AggregationBuilder getNextLevelAggregation(Map<String, Object> aggregate, int level) {
         TermsAggregationBuilder termBuilder = AggregationBuilders.terms((String)aggregate.get("l" + level))
                 .field(aggregate.get("l" + level) + SearchConstants.RAW_FIELD_EXTENSION)
-                .size(ElasticSearchUtil.defaultResultLimit);
+                .size(ElasticSearchUtil.defaultAggregationResultLimit);
 
 
 		if(level == aggregate.keySet().size()){

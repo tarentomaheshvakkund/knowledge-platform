@@ -79,6 +79,7 @@ public class ElasticSearchUtil {
 	private static Map<String, RestHighLevelClient> esClient = new HashMap<String, RestHighLevelClient>();
 
 	public static int defaultResultLimit = 10000;
+	public static int defaultAggregationResultLimit = 1000;
 	private static final int resultLimit = 100;
 	private static final int maxFieldLimit = 32000;
 	public int defaultResultOffset = 0;
