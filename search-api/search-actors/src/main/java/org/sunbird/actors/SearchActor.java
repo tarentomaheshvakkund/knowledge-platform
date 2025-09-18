@@ -401,6 +401,19 @@ public class SearchActor extends SearchBaseActor {
     private List<Map<String, Object>> getSearchFilterProperties(Map<String, Object> filters, Boolean traversal, Request request)
             throws Exception {
         List<Map<String, Object>> properties = new ArrayList<Map<String, Object>>();
+        if (filters.containsKey(SearchConstants.ANY) && filters.get(SearchConstants.ANY) instanceof List) {
+            List<Map<String, Object>> anyFilters = (List<Map<String, Object>>) filters.get(SearchConstants.ANY);
+            for (Map<String, Object> anyFilter : anyFilters) {
+                for (Map.Entry<String, Object> entry : anyFilter.entrySet()) {
+                    Map<String, Object> property = new HashMap<>();
+                    property.put(SearchConstants.operation, SearchConstants.ANY);
+                    property.put(SearchConstants.propertyName, entry.getKey());
+                    property.put(SearchConstants.values, Arrays.asList(entry.getValue()));
+                    properties.add(property);
+                }
+            }
+            filters.remove(SearchConstants.ANY);
+        }
         if (null == filters) filters = new HashMap<String, Object>();
         if (!filters.isEmpty()) {
             boolean publishedStatus = checkPublishedStatus(filters);

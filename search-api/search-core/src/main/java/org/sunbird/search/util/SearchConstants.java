@@ -118,4 +118,8 @@ public class SearchConstants {
     public static String isSecureSettingsDisabled = "isSecureSettingsDisabled";
     public static String secureSettingsOrganisation = "secureSettings.organisation";
     public static final String must = "must";
+    public static final String ANY = "any";
+    public static final String OPERATION = "operation";
+    public static final String PROPERTY_NAME = "propertyName";
+    public static final String VALUES = "values";
 }
