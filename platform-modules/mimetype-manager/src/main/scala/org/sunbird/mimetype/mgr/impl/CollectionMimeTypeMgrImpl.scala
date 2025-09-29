@@ -50,8 +50,8 @@ class CollectionMimeTypeMgrImpl(implicit ss: StorageService) extends BaseMimeTyp
 						throw new ClientException("ERR_COLLECTION_REVIEW", "Children which are not available are: " + filteredList)
 					} else {
 						val fNodes: List[String] = nodes.filter(node => !validResourceStatus.contains(node.getMetadata.getOrDefault("status", "").asInstanceOf[String])).toList.map(node => node.getIdentifier)
-						if (Platform.getBoolean("collection.children_status_validation", true) && fNodes.nonEmpty)
-							throw new ClientException("ERR_COLLECTION_REVIEW", "Unpublished Children Found With Identifier : " + fNodes)
+						if (Platform.getBoolean("collection.children_status_validation", false) && fNodes.nonEmpty)
+							throw new ClientException("ERR_COLLECTION_REVIEW", "Unpublished Children Found With Identifier caf: " + fNodes)
 					}
 					true
 				})

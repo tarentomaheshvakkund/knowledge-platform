@@ -90,7 +90,11 @@
                 "application/json",
                 "application/quiz",
                 "application/survey",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                "application/offline",
+                "external/redirect",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.ms-powerpoint",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ]
         },
         "osId": {
@@ -395,6 +399,12 @@
                     "Santali",
                     "Juang",
                     "Ho",
+                    "Konkani",
+                    "Bodo",
+                    "Dogri",
+                    "Kashmiri",
+                    "Manipuri",
+                    "Sindhi",
                     "Other"
                 ]
             },
@@ -491,7 +501,12 @@
                 "Course",
                 "Theory",
                 "Worksheet",
-                "Practical"
+                "Practical",
+                "Youtube",
+                "MP3",
+                "MP4",
+                "PDF",
+                "Link"
             ]
         },
         "category": {
@@ -1179,12 +1194,12 @@
         "cloudStorageKey": {
             "type": "string"
         },
-      "batches": {
-        "type": "array",
-        "items": {
-          "type": "object"
-        }
-      },
+        "batches": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
         "year": {
             "type": "string"
         },
@@ -1389,7 +1404,7 @@
             }
         },
         "transcripts": {
-          "type": "array",
+            "type": "array",
             "items": {
                 "type": "string"
             },
@@ -1411,6 +1426,133 @@
                     "type": "object"
                 }
             }
+        },
+        "secureSettings": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "number",
+                    "default": 1
+                },
+                "organisation": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "isVerifiedKarmayogi": {
+                    "type": "string",
+                    "default": "Yes",
+                    "enum": [
+                        "Yes",
+                        "No"
+                    ]
+                }
+            }
+        },
+        "maxUserInBatch": {
+            "type": "number",
+            "default": 200
+        },
+        "programDuration": {
+            "type": "number"
+        },
+        "wfApprovalType" : {
+            "type": "string"
+        },
+        "wfSurveyLink" : {
+            "type": "string",
+            "format": "url"
+        },
+        "programDirectorName" : {
+            "type": "string"
+        },
+        "programDirectoryDesignation" : {
+            "type": "string"
+        },
+        "parentCollections": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "courseCategory": {
+            "type": "string",
+            "enum": [
+                "Course",
+                "Moderated Course",
+                "Invite-Only Program",
+                "Moderated Program",
+                "Blended Program",
+                "Curated Program",
+                "Standalone Assessment",
+                "Moderated Assessment",
+                "Invite-Only Assessment",
+                "External Redirect"
+            ]
+        },
+        "resourceCategory": {
+            "type": "string"
+        },
+        "competencies_v5": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
+        "contextYear": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "contextSDGs": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "contextStateOrUTs": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "competencies_v6": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
+        "referenceNodes": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
+        "sectorDetails_v1": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        },
+        "durationInSeconds": {
+            "type": "number"
+        },
+        "accessSettingsEnabled" : {
+            "type": "boolean"
+        },
+        "contextCategory": {
+            "type": "string",
+            "enum": [
+                "Pre Enrolment Resource"
+            ]
+        },
+        "isMandatory": {
+            "type": "boolean"
+        },
+        "languageMapV1": {
+            "type": "object"
         }
     }
 }

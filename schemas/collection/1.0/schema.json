@@ -4,7 +4,6 @@
   "title": "Collection",
   "type": "object",
   "required": [
-    "name",
     "status",
     "mimeType",
     "channel",
@@ -57,8 +56,8 @@
       ]
     },
     "osId": {
-        "type": "string",
-        "default": "org.ekstep.launcher"
+      "type": "string",
+      "default": "org.ekstep.launcher"
     },
     "contentEncoding": {
       "type": "string",
@@ -168,7 +167,7 @@
     "contentCredits": {
       "type": "array",
       "items": {
-          "type": "object"
+        "type": "object"
       }
     },
     "appIcon": {
@@ -349,6 +348,12 @@
           "Santali",
           "Juang",
           "Ho",
+          "Konkani",
+          "Bodo",
+          "Dogri",
+          "Kashmiri",
+          "Manipuri",
+          "Sindhi",
           "Other"
         ]
       },
@@ -1043,16 +1048,16 @@
       "type": "object",
       "properties":
       {
-          "enabled":
-          {
-              "type": "string",
-              "enum": ["Yes", "No"],
-              "default": "No"
-          }
+        "enabled":
+        {
+          "type": "string",
+          "enum": ["Yes", "No"],
+          "default": "No"
+        }
       },
       "default":
       {
-          "enabled": "No"
+        "enabled": "No"
       },
       "additionalProperties": false
     },
@@ -1285,7 +1290,7 @@
     "accessibility": {
       "type": "array",
       "items": {
-          "type": "object"
+        "type": "object"
       }
     },
     "taxonomyPaths_v2": {
@@ -1304,6 +1309,206 @@
       "type": "string"
     },
     "totalNumberOfRatings": {
+      "type": "string"
+    },
+    "secureSettings": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "default": 1
+        },
+        "organisation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isVerifiedKarmayogi": {
+          "type": "string",
+          "default": "Yes",
+          "enum": [
+            "Yes",
+            "No"
+          ]
+        }
+      }
+    },
+    "maxUserInBatch": {
+      "type": "number",
+      "default": 200
+    },
+    "programDuration": {
+      "type": "number"
+    },
+    "wfApprovalType" : {
+      "type": "string"
+    },
+    "wfSurveyLink" : {
+      "type": "string",
+      "format": "url"
+    },
+    "programDirectorName" : {
+      "type": "string"
+    },
+    "programDirectoryDesignation" : {
+      "type": "string"
+    },
+    "parentCollections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalTags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "avgRating": {
+      "type": "number"
+    },
+    "totalNoOfRating": {
+      "type": "number"
+    },
+    "countOf1StarRating": {
+      "type": "number"
+    },
+    "countOf2StarRating": {
+      "type": "number"
+    },
+    "countOf3StarRating": {
+      "type": "number"
+    },
+    "countOf4StarRating": {
+      "type": "number"
+    },
+    "countOf5StarRating": {
+      "type": "number"
+    },
+    "test_competencies_v4": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "competencies_v5": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "courseCategory": {
+      "type": "string",
+      "enum": [
+        "Course",
+        "Moderated Course",
+        "Invite-Only Program",
+        "Moderated Program",
+        "Blended Program",
+        "Curated Program",
+        "Standalone Assessment",
+        "Moderated Assessment",
+        "Invite-Only Assessment",
+        "External Redirect",
+        "Case Study",
+        "Comprehensive Assessment Program",
+        "Multilingual Course",
+        "Pre Enrolment Assessment"
+      ]
+    },
+    "contentTagNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nlwOrgs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nlwUserExp": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contextYear": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contextSDGs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contextStateOrUTs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "teachersSection": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "competencies_v6": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "referenceNodes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sectorDetails_v1": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "accessSettingsEnabled" : {
+      "type": "boolean"
+    },
+    "contextCategory": {
+      "type": "string",
+      "enum": [
+        "Pre Read Course"
+      ]
+    },
+    "preEnrolmentResources": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "isMandatory": {
+      "type": "boolean"
+    },
+    "startDate": {
+      "type": "string"
+    },
+    "endDate": {
+      "type": "string"
+    },
+    "languageMapV1": {
+      "type": "object"
+    },
+    "startDate": {
+      "type": "string"
+    },
+    "endDate": {
       "type": "string"
     }
   }

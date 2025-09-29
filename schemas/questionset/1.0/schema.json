@@ -117,7 +117,7 @@
     },
     "compatibilityLevel": {
       "type": "number",
-      "default": 5
+      "default": 7
     },
     "childNodes": {
       "type": "array"
@@ -208,6 +208,12 @@
           "Urdu",
           "Sanskrit",
           "Maithili",
+          "Konkani",
+          "Bodo",
+          "Dogri",
+          "Kashmiri",
+          "Manipuri",
+          "Sindhi",
           "Other"
         ]
       },
@@ -552,6 +558,10 @@
       "type": "boolean",
       "default": true
     },
+    "isPublic": {
+      "type": "boolean",
+      "default": false
+    },
     "totalQuestions": {
       "type": "number"
     },
@@ -644,7 +654,7 @@
     "accessibility": {
       "type": "array",
       "items": {
-          "type": "object"
+        "type": "object"
       }
     },
     "outcomeDeclaration": {
@@ -719,6 +729,156 @@
     "maxAssessmentRetakeAttempts": {
       "type": "number",
       "default": 5
+    },
+    "secureSettings": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "default": 1
+        },
+        "organisation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isVerifiedKarmayogi": {
+          "type": "string",
+          "default": "Yes",
+          "enum": [
+            "Yes",
+            "No"
+          ]
+        }
+      }
+    },
+    "courseCategory": {
+      "type": "string",
+      "enum": [
+        "Course",
+        "Moderated Course",
+        "Invite-Only Program",
+        "Moderated Program",
+        "Blended Program",
+        "Curated Program",
+        "Standalone Assessment",
+        "Moderated Assessment"
+      ]
+    },
+    "assessmentType" : {
+      "type" : "string",
+      "enum": [
+        "questionWeightage",
+        "optionalWeightage",
+        "questionOptionWeightage"
+      ]
+    },
+    "noOfSection": {
+      "type": "number"
+    },
+    "overallPassMarks": {
+      "type": "number"
+    },
+    "negativeMarkingPercentage": {
+      "type": "string"
+    },
+    "showMarks": {
+      "type": "string",
+      "enum": [
+        "Yes",
+        "No"
+      ]
+    },
+    "randomization": {
+      "type": "string",
+      "enum": [
+        "Yes",
+        "No"
+      ]
+    },
+    "sectionLevelDefinition": {
+      "type": "object"
+    },
+    "sectionalPassPercentage" : {
+      "type": "string",
+      "enum": [
+        "Yes",
+        "No"
+      ]
+    },
+    "questionSectionScheme": {
+      "type": "object",
+      "properties": {
+        "sections[0-9]+$": {
+          "type": "object"
+        }
+      }
+    },
+    "questionTagging": {
+      "type": "string",
+      "enum": [
+        "Proficiency",
+        "EMDH"
+      ]
+    },
+    "maxSection": {
+      "type": "number"
+    },
+    "sectionTimeBound": {
+      "type": "string",
+      "enum": [
+        "Yes",
+        "No"
+      ]
+    },
+    "totalMarks": {
+      "type": "number"
+    },
+    "sectionWeightage": {
+      "type": "number"
+    },
+    "cqfVersion": {
+      "type": "string"
+    },
+    "sectionType": {
+      "type": "string",
+      "enum": [
+        "section",
+        "paragraph"
+      ]
+    },
+    "questionParagraph": {
+      "type": "string"
+    },
+    "competencies_v6": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "referenceNodes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "contextCategory": {
+      "type": "string",
+      "enum": [
+        "Final Program Assessment",
+        "Final Program Assessment UnLocked",
+        "Pre Enrolment Assessment"
+      ]
+    },
+    "sectorDetails_v1": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "isMandatory": {
+      "type": "boolean"
     }
   },
   "additionalProperties": false
