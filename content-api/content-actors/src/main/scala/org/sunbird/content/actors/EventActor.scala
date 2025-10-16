@@ -1,6 +1,7 @@
 package org.sunbird.content.actors
 
-import org.apache.commons.lang.StringUtils
+
+import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.cache.impl.RedisCache
 import org.sunbird.common.Platform
@@ -15,6 +16,8 @@ import org.sunbird.telemetry.logger.TelemetryManager
 import org.sunbird.telemetry.util.LogTelemetryEventUtil
 import org.sunbird.util.RequestUtil
 
+import java.time.format.DateTimeFormatter
+import java.time.{ZoneId, ZonedDateTime}
 import java.util
 import javax.inject.Inject
 import scala.collection.JavaConverters.asScalaBufferConverter
@@ -40,6 +43,37 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
   }
 
   override def update(request: Request): Future[Response] = {
+    val startDateTimeStr = request.getRequest.getOrDefault("startDateTime", "").asInstanceOf[String]
+    val endDateTimeStr = request.getRequest.getOrDefault("endDateTime", "").asInstanceOf[String]
+    if (StringUtils.isNotBlank(startDateTimeStr) && StringUtils.isNotBlank(endDateTimeStr)) {
+      try {
+        val inputUtcFormatter = DateTimeFormatter.ofPattern(Platform.config.getString("date.input.formatter"))
+        val outputIstFormatter = DateTimeFormatter.ofPattern(Platform.config.getString("date.input.formatter"))
+        val istZoneId = ZoneId.of("Asia/Kolkata")
+
+        val startDateTimeUtc = ZonedDateTime.parse(startDateTimeStr, inputUtcFormatter)
+        val startDateTimeIst = startDateTimeUtc.withZoneSameInstant(istZoneId)
+        val formattedStartDateTimeIst = startDateTimeIst.format(outputIstFormatter)
+        val startDateTimeEpochMillis = startDateTimeIst.toInstant.toEpochMilli
+
+        request.getRequest.put("startDateTime", formattedStartDateTimeIst)
+        request.getRequest.put("startDateTimeInEpoch", startDateTimeEpochMillis.asInstanceOf[java.lang.Long])
+
+        val endDateTimeUtc = ZonedDateTime.parse(endDateTimeStr, inputUtcFormatter)
+        val endDateTimeIst = endDateTimeUtc.withZoneSameInstant(istZoneId)
+        val formattedEndDateTimeIst = endDateTimeIst.format(outputIstFormatter)
+        val endDateTimeEpochMillis = endDateTimeIst.toInstant.toEpochMilli
+
+        request.getRequest.put("endDateTime", formattedEndDateTimeIst)
+        request.getRequest.put("endDateTimeInEpoch", endDateTimeEpochMillis.asInstanceOf[java.lang.Long])
+      } catch {
+        case ex: Exception =>
+          return Future.successful(ResponseHandler.
+            ERROR(ResponseCode.CLIENT_ERROR,
+              "ERR_INVALID_DATE_FORMAT",
+              "startDateTime or endDateTime is not in the expected format yyyy-MM-dd'T'HH:mm:ss.SSSXX"))
+      }
+    }
     populateDefaultersForUpdation(request)
     val versionKey = request.getRequest.getOrDefault("versionKey", "").asInstanceOf[String]
     if (StringUtils.isBlank(versionKey)) {
