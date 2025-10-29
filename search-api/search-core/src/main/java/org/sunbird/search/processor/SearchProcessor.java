@@ -547,12 +547,31 @@ public class SearchProcessor {
 		}
 	}
 
-	private QueryBuilder checkNestedProperty(QueryBuilder queryBuilder, String propertyName) {
-		if(propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "").contains(".")) {
-			queryBuilder = QueryBuilders.nestedQuery(propertyName.split("\\.")[0], queryBuilder, org.apache.lucene.search.join.ScoreMode.None);
-		}
-		return queryBuilder;
-	}
+    private QueryBuilder checkNestedProperty(QueryBuilder queryBuilder, String propertyName) {
+        String cleanProp = propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "");
+        if (!cleanProp.contains(".")) {
+            return queryBuilder;
+        }
+
+        String[] parts = cleanProp.split("\\.");
+        if (parts.length == 2) {
+            return QueryBuilders.nestedQuery(
+                    parts[0],
+                    queryBuilder,
+                    org.apache.lucene.search.join.ScoreMode.None
+            ).innerHit(new InnerHitBuilder());
+        }
+
+        for (int i = parts.length - 2; i >= 0; i--) {
+            String path = String.join(".", Arrays.copyOfRange(parts, 0, i + 1));
+            queryBuilder = QueryBuilders.nestedQuery(
+                    path,
+                    queryBuilder,
+                    org.apache.lucene.search.join.ScoreMode.None
+            ).innerHit(new InnerHitBuilder());
+        }
+        return queryBuilder;
+    }
 
 
 	private QueryBuilder getAndQuery(String propertyName, List<Object> values) {
