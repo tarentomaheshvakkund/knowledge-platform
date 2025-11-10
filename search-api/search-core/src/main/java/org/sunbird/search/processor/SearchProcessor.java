@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.index.query.*;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder.Type;
@@ -548,29 +549,16 @@ public class SearchProcessor {
 	}
 
     private QueryBuilder checkNestedProperty(QueryBuilder queryBuilder, String propertyName) {
-        String cleanProp = propertyName.replaceAll(SearchConstants.RAW_FIELD_EXTENSION, "");
+        if (StringUtils.isBlank(propertyName)) {
+            return queryBuilder;
+        }
+        String cleanProp = propertyName.replace(SearchConstants.RAW_FIELD_EXTENSION, "");
         if (!cleanProp.contains(".")) {
             return queryBuilder;
         }
+        String nestedPath = cleanProp.substring(0, cleanProp.lastIndexOf('.'));
 
-        String[] parts = cleanProp.split("\\.");
-        if (parts.length == 2) {
-            return QueryBuilders.nestedQuery(
-                    parts[0],
-                    queryBuilder,
-                    org.apache.lucene.search.join.ScoreMode.None
-            ).innerHit(new InnerHitBuilder());
-        }
-
-        for (int i = parts.length - 2; i >= 0; i--) {
-            String path = String.join(".", Arrays.copyOfRange(parts, 0, i + 1));
-            queryBuilder = QueryBuilders.nestedQuery(
-                    path,
-                    queryBuilder,
-                    org.apache.lucene.search.join.ScoreMode.None
-            ).innerHit(new InnerHitBuilder());
-        }
-        return queryBuilder;
+        return QueryBuilders.nestedQuery(nestedPath, queryBuilder, ScoreMode.None);
     }
 
 
