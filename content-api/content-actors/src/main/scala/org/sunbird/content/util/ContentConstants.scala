@@ -81,4 +81,38 @@ object ContentConstants {
     val UPDATE: String = "UPDATE";
     val SEND_TO_PUBLISH: String = "SentToPublish";
     val REVIEW: String = "Review";
+    val SOURCE_COLLECTION_ID: String = "sourceCollectionId"
+    val CREATED_FOR: String = "createdFor"
+    val ORGANISATION: String = "organisation"
+    val CREATOR_CONTACTS: String = "creatorContacts"
+    val FRAMEWORK: String = "framework"
+    val PREVIOUS_VERSION_COURSE_ID: String = "previousVersionCourseId"
+    val CONTENT_VERSION: String = "contentVersion"
+    val CONTENT_VERSION_INFO: String = "contentVersionInfo"
+    val CODE: String = "code"
+    val LANGUAGE: String = "language"
+    val PRIMARY_CATEGORY: String = "primaryCategory"
+    val POSTER_IMAGE: String = "posterImage"
+    val APP_ICON: String = "appIcon"
+    val CREATOR_LOGO: String = "creatorLogo"
+    val CONTENT_NAME: String = "contentName"
+    val STATUS_PENDING: String = "PENDING"
+    val STATUS_APPROVED: String = "APPROVED"
+    val STATUS_REJECTED: String = "REJECTED"
+    val STATUS_RETIRED: String = "RETIRED"
+    val VALID_RETIREMENT_STATUSES: Set[String] = Set(
+        STATUS_PENDING,
+        STATUS_APPROVED,
+        STATUS_REJECTED,
+        STATUS_RETIRED
+    )
+    val CONTENT_ID: String = "contentId"
+    val REQUEST_ID: String = "requestId"
+    val USER_ID_RAISED: String = "userIdRaised"
+    val REASON_FOR_RETIREMENT: String = "reasonForRetirement"
+    val LAST_ENROLLMENT_DATE: String = "lastEnrollmentDate"
+    val RETIREMENT_DATE: String = "retirementDate"
+    val REVIEWED_BY: String = "reviewedBy"
+    val REVIEWED_AT: String = "reviewedAt"
+    val REVIEWED_COMMENT: String = "reviewedComment"
 }

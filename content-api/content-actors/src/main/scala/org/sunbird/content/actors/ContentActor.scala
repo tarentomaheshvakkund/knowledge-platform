@@ -19,19 +19,20 @@ import org.sunbird.content.util.{AcceptFlagManager, ContentConstants, CopyManage
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
-import org.sunbird.common.exception.{ClientException, ResponseCode}
+import org.sunbird.common.exception.{ClientException, ResponseCode, ServerException}
 import org.sunbird.content.dial.DIALManager
 import org.sunbird.content.review.mgr.ReviewManager
 import org.sunbird.util.RequestUtil
 import org.sunbird.content.upload.mgr.UploadManager
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
+import org.sunbird.graph.external.store.ExternalStore
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 
-import java.time.{ZoneId, ZonedDateTime}
+import java.time.{Instant, LocalDate, ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import scala.collection.{JavaConverters, Map}
 import scala.collection.JavaConverters._
@@ -67,9 +68,10 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "createMLContent" => createMLContent(request)
 			case "reviewMLContent" => reviewMLContent(request)
 			case "updateReviewStatusMLContent" => updateReviewStatusMLContent(request)
+			case "createVersionContent" => createNewVersionOfContent(request)
 			case _ => ERROR(request.getOperation)
+				}
 		}
-	}
 
 	def create(request: Request): Future[Response] = {
 		populateDefaultersForCreation(request)
@@ -883,4 +885,256 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			ResponseHandler.OK().putAll(resultMap.asJava)
 		}
 	}
+
+	def createNewVersionOfContent(request: Request)(implicit oec: OntologyEngineContext, ec: ExecutionContext): Future[Response] = {
+		val sourceCollectionId = request.getRequest.get(ContentConstants.SOURCE_COLLECTION_ID).asInstanceOf[String]
+		val createdBy = request.getRequest.get(ContentConstants.CREATED_BY).asInstanceOf[String]
+		val creator = request.getRequest.get(ContentConstants.CREATOR).asInstanceOf[String]
+		val createdFor = request.getRequest.get(ContentConstants.CREATED_FOR).asInstanceOf[java.util.List[String]]
+		val organisation = request.getRequest.get(ContentConstants.ORGANISATION).asInstanceOf[java.util.List[String]]
+		val creatorContacts = request.getRequest.get(ContentConstants.CREATOR_CONTACTS).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+		val channel = request.getRequest.get(ContentConstants.CHANNEL).asInstanceOf[String]
+		val frameWork = request.getRequest.get(ContentConstants.FRAMEWORK).asInstanceOf[String]
+		if (StringUtils.isBlank(sourceCollectionId))
+			throw new ClientException("ERR_INVALID_REQUEST", "previousVersionCourseId is required")
+
+		val readReq = new Request()
+		readReq.setContext(new java.util.HashMap[String, AnyRef]() {
+			{
+				put("graph_id", "domain")
+				put("version", ContentConstants.SCHEMA_VERSION)
+				put("objectType", ContentConstants.CONTENT_OBJECT_TYPE)
+				put("schemaName", ContentConstants.CONTENT_SCHEMA_NAME)
+			}
+		})
+		readReq.put(ContentConstants.IDENTIFIER, sourceCollectionId)
+		readReq.put(ContentConstants.MODE, "read")
+		DataNode.read(readReq).flatMap { oldNode =>
+			val oldMeta = oldNode.getMetadata
+			val status = oldMeta.getOrDefault(ContentConstants.STATUS, "").asInstanceOf[String]
+			val name = oldMeta.getOrDefault(ContentConstants.NAME, "").asInstanceOf[String]
+			val sourceLangList = oldMeta.getOrDefault(ContentConstants.LANGUAGE, new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
+			val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
+			val contentType = oldMeta.getOrDefault(ContentConstants.CONTENT_TYPE, "").asInstanceOf[String]
+			val primaryCategory = oldMeta.getOrDefault(ContentConstants.PRIMARY_CATEGORY, "").asInstanceOf[String]
+			val mimeType = oldMeta.getOrDefault(ContentConstants.MIME_TYPE, "").asInstanceOf[String]
+			val posterImage = oldMeta.getOrDefault(ContentConstants.POSTER_IMAGE, "").asInstanceOf[String]
+			val appIcon = oldMeta.getOrDefault(ContentConstants.APP_ICON, "").asInstanceOf[String]
+			val creatorLogo = oldMeta.getOrDefault(ContentConstants.CREATOR_LOGO, "").asInstanceOf[String]
+
+			if (!StringUtils.equalsIgnoreCase(status, "Live"))
+				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
+
+			// DETERMINE NEXT VERSION
+			val oldVersion = Option(oldMeta.get(ContentConstants.CONTENT_VERSION)).map(_.toString).getOrElse("v1")
+			var nextVersionNum = extractVersionNumber(oldVersion) + 1
+
+			// check contentVersionInfo list
+			val versionInfoObj = oldMeta.getOrDefault(ContentConstants.CONTENT_VERSION_INFO, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+			val versionList = new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+			versionInfoObj match {
+				case list: java.util.List[_] => list.asScala.foreach(i => versionList.add(i.asInstanceOf[java.util.Map[String, AnyRef]]))
+				case map: java.util.Map[_, _] => versionList.add(map.asInstanceOf[java.util.Map[String, AnyRef]])
+				case s: String =>
+					try {
+						val parsed = JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
+						if (parsed != null) parsed.asScala.foreach(i => versionList.add(i))
+					} catch {
+						case _: Throwable =>
+					}
+				case _ =>
+			}
+			val highestExisting = versionList.asScala.toList.map { entry =>
+				val v = Option(entry.get("version")).map(_.toString).getOrElse("v1")
+				extractVersionNumber(v)
+			}.foldLeft(0)((acc, n) => Math.max(acc, n))
+
+			if (highestExisting >= nextVersionNum)
+				nextVersionNum = highestExisting + 1
+			val nextVersion = s"v$nextVersionNum"
+			val contentMap = new java.util.HashMap[String, AnyRef]()
+			contentMap.put(ContentConstants.NAME, name)
+			contentMap.put(ContentConstants.CREATED_BY, createdBy)
+			contentMap.put(ContentConstants.CREATED_FOR, createdFor)
+			contentMap.put(ContentConstants.CREATOR, creator)
+			contentMap.put(ContentConstants.ORGANISATION, organisation)
+			contentMap.put(ContentConstants.CHANNEL, channel)
+			contentMap.put(ContentConstants.CREATOR_CONTACTS, creatorContacts)
+			contentMap.put(ContentConstants.FRAMEWORK, frameWork)
+			contentMap.put(ContentConstants.CONTENT_TYPE, contentType)
+			contentMap.put(ContentConstants.PRIMARY_CATEGORY, primaryCategory)
+			contentMap.put(ContentConstants.MIME_TYPE, mimeType)
+			contentMap.put(ContentConstants.APP_ICON, appIcon)
+			contentMap.put(ContentConstants.POSTER_IMAGE, posterImage)
+			contentMap.put(ContentConstants.COURSE_CATEGORY, oldMeta.get(ContentConstants.COURSE_CATEGORY))
+			contentMap.put(ContentConstants.CODE, scala.util.Random.nextInt(900000000) + 1000000000 toString)
+			contentMap.put(ContentConstants.LANGUAGE, util.Arrays.asList(baseLang.capitalize))
+
+			if (StringUtils.isNotBlank(creatorLogo)) {
+				contentMap.put(ContentConstants.CREATOR_LOGO, creatorLogo)
+			}
+			contentMap.put(ContentConstants.PREVIOUS_VERSION_COURSE_ID, sourceCollectionId)
+			contentMap.put(ContentConstants.CONTENT_VERSION, nextVersion)
+
+			val createReq = new Request()
+			createReq.setOperation("createContent")
+			createReq.setRequest(contentMap)
+			createReq.setContext(new java.util.HashMap[String, AnyRef]() {
+				{
+					put("graph_id", "domain")
+					put("version", ContentConstants.SCHEMA_VERSION)
+					put("objectType", ContentConstants.CONTENT_OBJECT_TYPE)
+					put("schemaName", ContentConstants.CONTENT_SCHEMA_NAME)
+				}
+			})
+			create(createReq).flatMap { createResp =>
+				val newCourseId = createResp.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
+
+				//UPDATE OLD COURSE contentVersionInfo
+				val newEntry = new java.util.HashMap[String, AnyRef]() {
+					{
+						put(ContentConstants.IDENTIFIER, newCourseId)
+						put(ContentConstants.CONTENT_VERSION, nextVersion)
+						put(ContentConstants.CONTENT_NAME, name)
+					}
+				}
+				versionList.add(newEntry)
+				val updateOldReq = new Request()
+				updateOldReq.setOperation("systemUpdate")
+				updateOldReq.setRequest(new java.util.HashMap[String, AnyRef]() {
+					{
+						put(ContentConstants.CONTENT_VERSION_INFO, versionList)
+					}
+				})
+				updateOldReq.setContext(new java.util.HashMap[String, AnyRef]() {
+					{
+						put("graph_id", "domain")
+						put("version", ContentConstants.SCHEMA_VERSION)
+						put("objectType", ContentConstants.CONTENT_OBJECT_TYPE)
+						put("schemaName", ContentConstants.CONTENT_SCHEMA_NAME)
+						put(ContentConstants.IDENTIFIER, sourceCollectionId)
+					}
+				})
+				systemUpdate(updateOldReq).map { _ =>
+					val response = ResponseHandler.OK()
+					response.put("newVersionId", newCourseId)
+					response.put("previousVersionId", sourceCollectionId)
+					response.put(ContentConstants.CONTENT_VERSION, nextVersion)
+					response
+				}
+			}
+		}
+	}
+
+	private def extractVersionNumber(v: String): Int = {
+		if (v == null) return 1
+		val s = v.toLowerCase.trim
+		val VersionRegex = ".*?v?\\s*(\\d+)(?:\\.\\d+)?$".r
+		s match {
+			case VersionRegex(n) => try {
+				n.toInt
+			} catch {
+				case _: Throwable => 1
+			}
+			case _ => 1
+		}
+	}
+
+	private def createRetirementAudit(request: Request): Future[Response] = {
+		val req = request.getRequest.asInstanceOf[java.util.Map[String, Object]]
+
+		def getOrError(key: String): String = {
+			val v = req.get(key)
+			if (v == null) throw new ClientException("ERR_INVALID_REQUEST", s"$key is required")
+			v.toString
+		}
+
+		val contentId = getOrError(ContentConstants.CONTENT_ID)
+		val userId = getOrError(ContentConstants.USER_ID_RAISED)
+		val reason = req.get(ContentConstants.REASON_FOR_RETIREMENT)
+
+		// Handle LAST/RETIREMENT DATE as LocalDate (Cassandra date)
+		val lastEnrollment = parseToCassandraDate(req.get(ContentConstants.LAST_ENROLLMENT_DATE).toString)
+		val retirementDate = parseToCassandraDate(req.get(ContentConstants.RETIREMENT_DATE).toString)
+		val allowedStatuses = ContentConstants.VALID_RETIREMENT_STATUSES
+
+		val status = Option(req.get(ContentConstants.STATUS))
+			.map(_.toString.trim)
+			.filter(_.nonEmpty)
+			.map(_.toUpperCase)
+			.getOrElse(throw new ClientException("ERR_INVALID_REQUEST", "status is required"))
+
+		if (!allowedStatuses.contains(status)) {
+			throw new ClientException("ERR_INVALID_STATUS",
+				s"Invalid status: $status. Allowed: PENDING, APPROVED, REJECTED, RETIRED")
+		}
+		val reviewedBy: AnyRef = req.get(ContentConstants.REVIEWED_BY)
+		val reviewedAt: AnyRef = parseToCassandraTimestamp(req.get(ContentConstants.REVIEWED_AT))
+		val reviewedComment: AnyRef = req.get(ContentConstants.REVIEWED_COMMENT)
+
+		import com.datastax.driver.core.utils.UUIDs
+		val requestId = Option(req.get(ContentConstants.REQUEST_ID)).map(_.toString).getOrElse(UUIDs.timeBased().toString)
+		val id = UUIDs.timeBased().toString
+		val nowTs = new java.sql.Timestamp(System.currentTimeMillis())
+
+		val row = new java.util.HashMap[String, Object]()
+		row.put("identifier", contentId)
+		row.put("id", id)
+		row.put("request_id", requestId)
+		row.put("user_id_raised", userId)
+		row.put("reason_for_retirement", reason)
+		row.put("last_enrollment_date", lastEnrollment)
+		row.put("retirement_date", retirementDate)
+		row.put("reviewed_by", reviewedBy)
+		row.put("reviewed_at", reviewedAt)
+		row.put("reviewed_comment", reviewedComment)
+		row.put("created_at", nowTs)
+		row.put("updated_at", nowTs)
+		row.put("status", status)
+
+		val primaryKeys = java.util.Arrays.asList("content_id", "id")
+
+		val auditStore = new ExternalStore(
+			Platform.config.getString("cassandra.keyspace.course.content"),
+			Platform.config.getString("content.retirement.requests.audit"),
+			primaryKeys
+		)
+		auditStore.insert(row, Map.empty[String, String]).map { _ =>
+			val resp = ResponseHandler.OK()
+			resp.put("contentId", contentId)
+			resp.put("id", id)
+			resp.put("requestId", requestId)
+			resp.put("status", status)
+			resp
+		}
+	}
+
+	private def parseToCassandraDate(date: String): com.datastax.driver.core.LocalDate = {
+		val parts = date.split("-")
+		com.datastax.driver.core.LocalDate.fromYearMonthDay(
+			parts(0).toInt, parts(1).toInt, parts(2).toInt
+		)
+	}
+
+	private def parseToCassandraTimestamp(v: Any): java.util.Date = {
+		if (v == null) return null
+		val s = v.toString.trim
+
+		try {
+			// If full ISO timestamp → parse directly
+			return java.util.Date.from(java.time.Instant.parse(s))
+		} catch {
+			case _: Throwable =>
+				try {
+					val localDate = java.time.LocalDate.parse(s)
+					val instant = localDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant
+					return java.util.Date.from(instant)
+				} catch {
+					case _: Throwable =>
+						throw new ClientException("ERR_INVALID_DATE_FORMAT",
+							s"Invalid date format: $s. Expected ISO timestamp or yyyy-MM-dd")
+				}
+		}
+	}
+
 }

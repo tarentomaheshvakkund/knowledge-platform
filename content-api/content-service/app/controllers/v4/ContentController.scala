@@ -249,4 +249,15 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         getResult(ApiId.UPDATE_REVIEW_STATUS_ML_CONTENT, contentActor, contentRequest, version = apiVersion)
     }
 
+    def createVersionContent() = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val body = requestBody()
+        val content = body.getOrDefault("content", new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]
+        content.putAll(headers)
+        val sbRequest = getRequest(content, headers, "createVersionContent", true)
+        setRequestContext(sbRequest, version, objectType, schemaName)
+        getResult(ApiId.CREATE_VERSION_CONTENT, contentActor, sbRequest)
+    }
+
+
 }
