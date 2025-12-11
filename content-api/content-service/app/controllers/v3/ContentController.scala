@@ -274,10 +274,11 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
       wrapper.putAll(headers)
       val contentRequest = getRequest(wrapper, headers, "scheduleRetirement")
       setRequestContext(contentRequest, version, objectType, schemaName)
-      contentRequest.getContext.put(
-        "X-Authenticated-Userid",
-        request.headers.get("X-Authenticated-Userid").getOrElse("")
-      )
+      val userIdFromHeader =
+        request.headers.get("X-Authenticated-Userid")
+          .orElse(request.headers.get("x-authenticated-userid"))
+          .getOrElse("")
+      contentRequest.getContext.put("X-Authenticated-Userid", userIdFromHeader)
       getResult(ApiId.RETIRE_SCHEDULER_V1, contentActor, contentRequest)
     }
 
