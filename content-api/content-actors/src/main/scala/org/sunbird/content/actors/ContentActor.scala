@@ -918,6 +918,11 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val oldMeta = oldNode.getMetadata
 			val status = oldMeta.getOrDefault(ContentConstants.STATUS, "").asInstanceOf[String]
 			val name = oldMeta.getOrDefault(ContentConstants.NAME, "").asInstanceOf[String]
+			val newName: String =
+				Option(request.getRequest.get(ContentConstants.NAME))
+					.map(_.toString.trim)
+					.filter(_.nonEmpty)
+					.getOrElse(name)
 			val sourceLangList = oldMeta.getOrDefault(ContentConstants.LANGUAGE, new util.ArrayList[String]()).asInstanceOf[java.util.List[String]]
 			val baseLang = if (CollectionUtils.isNotEmpty(sourceLangList)) sourceLangList.get(0).toLowerCase else throw new ClientException("ERR_MISSING_LANGUAGE", "Source content must have one language")
 			val contentType = oldMeta.getOrDefault(ContentConstants.CONTENT_TYPE, "").asInstanceOf[String]
@@ -958,7 +963,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				nextVersionNum = highestExisting + 1
 			val nextVersion = s"v$nextVersionNum"
 			val contentMap = new java.util.HashMap[String, AnyRef]()
-			contentMap.put(ContentConstants.NAME, name)
+			contentMap.put(ContentConstants.NAME, newName)
 			contentMap.put(ContentConstants.CREATED_BY, createdBy)
 			contentMap.put(ContentConstants.CREATED_FOR, createdFor)
 			contentMap.put(ContentConstants.CREATOR, creator)
@@ -1000,7 +1005,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					{
 						put(ContentConstants.IDENTIFIER, newCourseId)
 						put(ContentConstants.CONTENT_VERSION, nextVersion)
-						put(ContentConstants.CONTENT_NAME, name)
+						put(ContentConstants.CONTENT_NAME, newName)
 					}
 				}
 				versionList.add(newEntry)
