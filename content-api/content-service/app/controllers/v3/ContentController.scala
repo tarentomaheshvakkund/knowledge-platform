@@ -3,14 +3,17 @@ package controllers.v3
 import akka.actor.{ActorRef, ActorSystem}
 import com.google.inject.Singleton
 import controllers.BaseController
+import org.apache.commons.lang.StringUtils
+
 import javax.inject.{Inject, Named}
 import org.sunbird.models.UploadParams
 import org.sunbird.common.dto.ResponseHandler
+import org.sunbird.common.exception.ClientException
+import org.sunbird.content.util.ContentConstants
 import play.api.mvc.ControllerComponents
 import utils.{ActorNames, ApiId, JavaJsonUtils}
 
 import scala.collection.JavaConverters._
-
 import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
@@ -265,4 +268,32 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
         getResult(ApiId.IMPORT_CONTENT, contentActor, contentRequest)
     }
 
+    def scheduleRetirement = Action.async { implicit request =>
+      val headers = commonHeaders()
+      val wrapper = body()
+      wrapper.putAll(headers)
+      val contentRequest = getRequest(wrapper, headers, "scheduleRetirement")
+      setRequestContext(contentRequest, version, objectType, schemaName)
+      contentRequest.getContext.put(
+        "X-Authenticated-Userid",
+        request.headers.get("X-Authenticated-Userid").getOrElse("")
+      )
+      getResult(ApiId.RETIRE_SCHEDULER_V1, contentActor, contentRequest)
+    }
+
+    def isRetirementScheduled(identifier: String) = Action.async { implicit request =>
+      if (StringUtils.isBlank(identifier)) {
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_CONTENT_ID,
+          ContentConstants.ERR_CONTENT_ID_MISSING
+        )
+      }
+      val headers = commonReadHeaders()
+      val content = new java.util.HashMap().asInstanceOf[java.util.Map[String, Object]]
+      content.putAll(headers)
+      content.putAll(Map("identifier" -> identifier).asJava)
+      val readRequest = getRequest(content, headers, "isRetirementScheduled")
+      setRequestContext(readRequest, version, objectType, schemaName)
+      getResult(ApiId.VALIDATE_RETIREMENT, contentActor, readRequest, true)
+    }
 }

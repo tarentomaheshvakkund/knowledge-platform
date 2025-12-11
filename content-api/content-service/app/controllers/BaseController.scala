@@ -83,6 +83,15 @@ abstract class BaseController(protected val cc: ControllerComponents)(implicit e
         new org.sunbird.common.dto.Request(context, input, operation, null);
     }
 
+    def body()(implicit request: Request[AnyContent]): java.util.Map[String, Object] = {
+      val bodyStr = request.body.asJson.getOrElse("{}").toString
+      val innerMap =
+        JavaJsonUtils.deserialize[java.util.Map[String, Object]](bodyStr)
+      val wrapper = new java.util.HashMap[String, Object]()
+      wrapper.put("request", innerMap)
+      wrapper
+    }
+
     def getResult(apiId: String, actor: ActorRef, request: org.sunbird.common.dto.Request, categoryMapping: Boolean = false, version: String = "3.0") : Future[Result] = {
         val future = Patterns.ask(actor, request, actorTimeout) recoverWith {case e: Exception => Future(ResponseHandler.getErrorResponse(e))}
         future.map(f => {

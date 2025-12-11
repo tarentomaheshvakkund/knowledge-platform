@@ -28,6 +28,8 @@ POST     /content/v3/dialcode/reserve/:identifier controllers.v3.ContentControll
 PATCH    /content/v3/dialcode/release/:identifier controllers.v3.ContentController.releaseDialcodes(identifier:String)
 POST     /content/v3/reject/:identifier           controllers.v4.ContentController.reviewReject(identifier:String)
 POST     /content/v3/unlisted/publish/:identifier  controllers.v3.ContentController.publishUnlisted(identifier:String)
+POST     /content/v1/retirement/schedule    controllers.v3.ContentController.scheduleRetirement
+GET      /content/v1/retirement/validate/:identifier controllers.v3.ContentController.isRetirementScheduled(identifier:String)
 
 # Collection APIs
 PATCH     /content/v3/hierarchy/add         controllers.v3.ContentController.addHierarchy
