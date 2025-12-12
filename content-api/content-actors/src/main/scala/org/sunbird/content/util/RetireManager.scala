@@ -23,6 +23,7 @@ import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.ScalaJsonUtils
 import org.sunbird.kafka.client.KafkaClient
 import org.sunbird.managers.HierarchyManager
+import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 import org.sunbird.parseq.Task
 import org.sunbird.telemetry.logger.TelemetryManager
 import org.sunbird.util.RequestUtil
@@ -206,7 +207,7 @@ object RetireManager {
         readReq.put("identifier", id)
         readReq.setObjectType("Content")
         readReq.put(ContentConstants.MODE, "read")
-
+        RedisCache.delete(id)
         DataNode.read(readReq).flatMap { node =>
           if (node == null)
             throw new ClientException(
