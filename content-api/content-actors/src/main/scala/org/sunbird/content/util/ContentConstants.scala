@@ -151,4 +151,8 @@ object ContentConstants {
     val PENDING_RETIREMENT = "PendingRetirement"
     val SUNBIRD__KEYSPACE = "cbplan.lookup.keyspace"
     val CB_PLAN_LOOKUP_TABLE = "cbplan.lookup.table"
+    val SUCCESS = "successful"
+    val ISVALID = "isValid"
+    val MESSAGES = "messages"
+    val FAILED = "Failed"
 }
