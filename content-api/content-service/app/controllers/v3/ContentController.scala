@@ -297,4 +297,20 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
       setRequestContext(readRequest, version, objectType, schemaName)
       getResult(ApiId.VALIDATE_RETIREMENT, contentActor, readRequest, true)
     }
+
+    def decideRetirementRequest = Action.async { implicit request =>
+      val headers = commonHeaders()
+      val wrapper = body()
+      wrapper.putAll(headers)
+      val contentRequest = getRequest(wrapper, headers, "decideRetirementRequest")
+      setRequestContext(contentRequest, version, objectType, schemaName)
+      // (Optional) pass authenticated user to context if needed downstream
+      val userIdFromHeader =
+        request.headers.get("X-Authenticated-Userid")
+          .orElse(request.headers.get("x-authenticated-userid"))
+          .getOrElse("")
+      contentRequest.getContext.put("X-Authenticated-Userid", userIdFromHeader)
+      getResult(ApiId.RETIREMENT_REQUEST_DECIDE_V1, contentActor, contentRequest)
+    }
+
 }

@@ -19,7 +19,7 @@ import org.sunbird.content.util.{AcceptFlagManager, ContentConstants, CopyManage
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
-import org.sunbird.common.exception.{ClientException, ResponseCode, ServerException}
+import org.sunbird.common.exception.{ClientException, ErrorCodes, ResponseCode, ServerException}
 import org.sunbird.content.dial.DIALManager
 import org.sunbird.content.review.mgr.ReviewManager
 import org.sunbird.util.RequestUtil
@@ -33,10 +33,17 @@ import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 
 import java.time.{Instant, LocalDate, ZoneId, ZonedDateTime}
+import java.time.{ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import scala.collection.{JavaConverters, Map}
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import com.datastax.driver.core.querybuilder.QueryBuilder
+import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
+import org.sunbird.common.dto.{Response, ResponseHandler}
+import org.sunbird.common.exception.{ErrorCodes, ResponseCode, ServerException}
+import org.sunbird.cassandra.{CassandraConnector, CassandraStore}
+
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -45,6 +52,18 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	private lazy val importMgr = new ImportManager(importConfig)
 	private val logger: Logger = LoggerFactory.getLogger("ContentActor")
 	val excludedCategories: Set[String] = Set(ContentConstants.LEARNING_RESOURCE)
+  private val retirementRequestKeyspace: String =
+    Platform.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE, "sunbird_courses")
+
+  private val retirementRequestTable: String =
+    Platform.getString(ContentConstants.CONTENT_RETIREMENT_RQST_TABLE, "content_retirement_requests")
+
+  private val retirementRequestStore =
+    new ExternalStore(
+      retirementRequestKeyspace,
+      retirementRequestTable,
+      util.Arrays.asList(ContentConstants.RETITEMENT_PRIMARY_KEY)
+    )
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -71,6 +90,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "createVersionContent" => createNewVersionOfContent(request)
       case "scheduleRetirement" => scheduleRetirement(request)
       case "isRetirementScheduled" => isRetirementScheduled(request)
+      case "decideRetirementRequest" => decideRetirementRequest(request)
 			case _ => ERROR(request.getOperation)
 				}
 		}
@@ -1150,5 +1170,309 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 
   def isRetirementScheduled(request: Request): Future[Response] = {
     RetireManager.isRetirementScheduled(request)
+  }
+
+  def decideRetirementRequest(
+                               request: Request
+                             )(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
+    logger.info("Inside decideRetirementRequest method of RetireManager")
+    validateDecideRetirementRequest(request)
+    val outerMap = request.getRequest
+    val reqMap = Option(outerMap.get(ContentConstants.RQST))
+      .map(_.asInstanceOf[java.util.Map[String, AnyRef]])
+      .getOrElse(
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_REQUEST,
+          "Request body is missing."
+        )
+      )
+    val contentId = Option(reqMap.get(ContentConstants.CONTENT_ID))
+      .map(_.toString.trim)
+      .filter(org.apache.commons.lang3.StringUtils.isNotBlank)
+      .getOrElse(
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_CONTENT_ID,
+          ContentConstants.ERR_CONTENT_ID_MISSING
+        )
+      )
+    val action = Option(reqMap.get(ContentConstants.ACTION))
+      .map(_.toString.trim.toUpperCase)
+      .getOrElse(
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_REQUEST,
+          "Action is missing"
+        )
+      )
+    val externalProperties: List[String] =
+      Platform.config.getStringList(ContentConstants.RETIREMENT_READ_COLUMNS)
+        .asScala
+        .toList
+    val propertyTypeMapping =
+      scala.collection.immutable.Map.empty[String, String]
+    for {
+      _ <- RetireManager.isRetirementScheduled(request).map(_ => ())
+
+      readResp <- retirementRequestStore.read(
+        contentId,
+        externalProperties,
+        propertyTypeMapping
+      )
+
+      _ <- {
+        if (readResp.getResponseCode != ResponseCode.OK) {
+          Future.successful(())
+        } else {
+          val result =
+            readResp.getResult.asInstanceOf[java.util.Map[String, AnyRef]]
+          val requestId =
+            result.get(ContentConstants.RQST_ID).toString
+          updateRetirementRequestByCompositeKey(
+            contentId = contentId,
+            requestId = requestId,
+            approvedBy = extractUserId(request),
+            keySpace = Platform.getString(
+              ContentConstants.SUNBIRD_COURSE_KEYSPACE,
+              "sunbird_courses"
+            ),
+            table = Platform.getString(
+              ContentConstants.CONTENT_RETIREMENT_RQST_TABLE,
+              "content_retirement_requests"
+            ),
+            action = action
+          ).flatMap { _ =>
+            markContentPendingRetirement(
+              request = request,
+              retirementResult = result,
+              action = action
+            ).map { resp =>
+              logger.info(
+                s"[RETIRE-DECIDE][CONTENT-UPDATE][SUCCESS] contentId=$contentId, action=$action"
+              )
+              resp
+            }
+          }
+        }
+      }
+    } yield {
+      logger.info(
+        s"[RETIRE-DECIDE][SUCCESS] contentId=$contentId, action=$action"
+      )
+      ResponseHandler.OK
+        .put("node_id", contentId)
+        .put("identifier", contentId)
+    }
+  }
+
+  private def extractUserId(req: Request): String = {
+    val fromContext = Option(req.getContext.get("X-Authenticated-Userid"))
+      .map(_.toString)
+      .filter(StringUtils.isNotBlank)
+    if (fromContext.isDefined) return fromContext.get
+    val params = req.getParams
+    if (params != null && params.getUid != null)
+      return params.getUid
+    ""
+  }
+
+  private def validateDecideRetirementRequest(request: Request): Unit = {
+    val outerMap = request.getRequest
+    val reqMap = Option(outerMap.get(ContentConstants.RQST))
+      .map(_.asInstanceOf[java.util.Map[String, AnyRef]])
+      .getOrElse(throw new ClientException(
+        ContentConstants.ERR_INVALID_REQUEST,
+        "Request body is missing."
+      ))
+    Option(reqMap.get(ContentConstants.CONTENT_ID))
+      .map(_.toString.trim)
+      .filter(StringUtils.isNotBlank)
+      .getOrElse(throw new ClientException(
+        ContentConstants.ERR_INVALID_CONTENT_ID,
+        ContentConstants.ERR_CONTENT_ID_MISSING
+      ))
+    val action = Option(reqMap.get(ContentConstants.ACTION))
+      .map(_.toString.trim.toUpperCase)
+      .filter(StringUtils.isNotBlank)
+      .getOrElse(throw new ClientException(
+        ContentConstants.ERR_INVALID_REQUEST,
+        "Action is mandatory."
+      ))
+    if (!Set("APPROVE", "REJECT").contains(action)) {
+      throw new ClientException(
+        ContentConstants.ERR_INVALID_REQUEST,
+        s"Invalid action: $action. Allowed values are APPROVE or REJECT."
+      )
+    }
+    Option(reqMap.get(ContentConstants.COMMENT))
+      .map(_.toString.trim)
+      .filter(StringUtils.isNotBlank)
+      .getOrElse(throw new ClientException(
+        ContentConstants.ERR_INVALID_REQUEST,
+        "Comment is mandatory."
+      ))
+  }
+
+  private def updateRetirementRequestByCompositeKey(
+                                                     keySpace: String,
+                                                     table: String,
+                                                     contentId: String,
+                                                     requestId: String,
+                                                     approvedBy: String,
+                                                     action : String
+                                                   )(implicit ec: ExecutionContext): Future[Response] = {
+
+    val update = QueryBuilder.update(keySpace, table)
+    update.where
+      .and(QueryBuilder.eq(ContentConstants.RETITEMENT_PRIMARY_KEY, contentId))
+      .and(QueryBuilder.eq(ContentConstants.RQST_ID, requestId))
+    update
+      .`with`(QueryBuilder.set(ContentConstants.APPROVED, java.lang.Boolean.TRUE))
+      .and(QueryBuilder.set(ContentConstants.APPROVED_BY_RQST, approvedBy))
+      .and(QueryBuilder.set(ContentConstants.APPROVED_AT, new java.util.Date()))
+      .and(QueryBuilder.set(ContentConstants.STATUS, ContentConstants.APPROVED_KEY))
+      .and(QueryBuilder.set(ContentConstants.APPROVED_COMMENT, action))
+
+    CassandraConnector.getSession
+      .executeAsync(update)
+      .asScala
+      .map { _ =>
+        logger.info(
+          s"[RETIRE-DECIDE][UPDATE-SUCCESS] contentId=$contentId, requestId=$requestId, approvedBy=$approvedBy"
+        )
+        ResponseHandler.OK()
+      }
+
+  }
+
+  implicit class RichListenableFuture[T](lf: ListenableFuture[T]) {
+    def asScala : Future[T] = {
+      val p = Promise[T]()
+      Futures.addCallback(lf, new FutureCallback[T] {
+        def onFailure(t: Throwable): Unit = p failure t
+        def onSuccess(result: T): Unit    = p success result
+      }, MoreExecutors.directExecutor())
+      p.future
+    }
+  }
+
+  def markContentPendingRetirement(
+                                    request: Request,
+                                    retirementResult: java.util.Map[String, AnyRef],
+                                    action: String
+                                  )(
+                                    implicit ec: ExecutionContext,
+                                    oec: OntologyEngineContext
+                                  ): Future[Response] = {
+
+    val outerMap = request.getRequest
+    val reqMap = Option(outerMap.get("request"))
+      .map(_.asInstanceOf[java.util.Map[String, AnyRef]])
+      .getOrElse(
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_REQUEST,
+          "Request body is missing."
+        )
+      )
+
+    val id = Option(reqMap.get(ContentConstants.CONTENT_ID))
+      .map(_.toString.trim)
+      .filter(StringUtils.isNotBlank)
+      .getOrElse(
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_CONTENT_ID,
+          ContentConstants.ERR_CONTENT_ID_MISSING
+        )
+      )
+
+    val lastEnrollmentDate =
+      retirementResult.get(ContentConstants.LAST_ENROLLMENT_DATE_RQST)
+
+    val retirementDate =
+      retirementResult.get(ContentConstants.RETIREMENT_DATE_RQST)
+
+    val readReq = new Request()
+    readReq.setContext(new util.HashMap[String, AnyRef]() {{
+      put("graph_id", "domain")
+      put("version", "1.0")
+      put("objectType", "Content")
+      put("schemaName", "content")
+    }})
+    readReq.put("identifier", id)
+    readReq.setObjectType("Content")
+    readReq.put(ContentConstants.MODE, "read")
+    DataNode.read(readReq).flatMap { node =>
+      if (node == null)
+        throw new ClientException(
+          ContentConstants.ERR_INVALID_CONTENT_ID,
+          s"Content is not found for identifier: $id"
+        )
+
+      val metadata = node.getMetadata
+      val status = Option(metadata.get("status")).map(_.toString).getOrElse("")
+
+      if (StringUtils.isBlank(status))
+        throw new ClientException(
+          "ERR_METADATA_ISSUE",
+          s"Content metadata error, status is blank for identifier: ${node.getIdentifier}"
+        )
+
+      action match {
+        case ContentConstants.APPROVE =>
+          request.getRequest.put(
+            ContentConstants.CONTENT_RETIREMENT_STS,
+            ContentConstants.PENDING_RETIREMENT
+          )
+          if (lastEnrollmentDate != null) {
+            request.getRequest.put(
+              ContentConstants.LAST_ENROLLMENT_DATE,
+              toOffsetTimestamp(lastEnrollmentDate)
+            )
+          }
+
+          if (retirementDate != null) {
+            request.getRequest.put(
+              ContentConstants.RETIREMENT_DATE,
+              toOffsetTimestamp(retirementDate)
+            )
+          }
+
+        case ContentConstants.REJECT =>
+          request.getRequest.put(
+            ContentConstants.CONTENT_RETIREMENT_STS,
+            ContentConstants.REJECTED
+          )
+      }
+      request.getRequest.put("versionKey", metadata.get("versionKey"))
+      RequestUtil.restrictProperties(request)
+      request.getContext.put(ContentConstants.IDENTIFIER, id)
+
+      systemUpdate(request).map { updatedResp =>
+        logger.info(
+          s"[RETIRE-DECIDE][CONTENT-UPDATE] action=$action, contentId=$id"
+        )
+        ResponseHandler.OK
+          .put("identifier", id)
+          .put("status", action)
+      }
+    }
+  }
+
+  private def toOffsetTimestamp(value: AnyRef): String = {
+    val formatter =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+    value match {
+      case date: java.util.Date =>
+        ZonedDateTime
+          .ofInstant(date.toInstant, ZoneId.systemDefault())
+          .format(formatter)
+      case date: java.time.LocalDate =>
+        date.atStartOfDay(ZoneId.systemDefault())
+          .format(formatter)
+      case str: String =>
+        str
+      case _ =>
+        ZonedDateTime
+          .now(ZoneId.systemDefault())
+          .format(formatter)
+    }
   }
 }

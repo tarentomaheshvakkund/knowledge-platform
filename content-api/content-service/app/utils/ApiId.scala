@@ -112,4 +112,6 @@ object ApiId {
 
   val RETIRE_SCHEDULER_V1: String = "api.content.v1.retire.scheduler"
   val VALIDATE_RETIREMENT= "api.content.v1.retire.validation"
+
+  val RETIREMENT_REQUEST_DECIDE_V1 = "api.content.v1.retire.request.decide"
 }
