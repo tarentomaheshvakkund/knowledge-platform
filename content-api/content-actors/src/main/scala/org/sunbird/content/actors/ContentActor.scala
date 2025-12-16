@@ -919,9 +919,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		val organisation = request.getRequest.get(ContentConstants.ORGANISATION).asInstanceOf[java.util.List[String]]
 		val creatorContacts = request.getRequest.get(ContentConstants.CREATOR_CONTACTS).asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
 		val channel = request.getRequest.get(ContentConstants.CHANNEL).asInstanceOf[String]
-		val frameWork = request.getRequest.get(ContentConstants.FRAMEWORK).asInstanceOf[String]
 		if (StringUtils.isBlank(sourceCollectionId))
-			throw new ClientException("ERR_INVALID_REQUEST", "previousVersionCourseId is required")
+			throw new ClientException("ERR_INVALID_REQUEST", "sourceCollectionId is required")
 
 		val readReq = new Request()
 		readReq.setContext(new java.util.HashMap[String, AnyRef]() {
@@ -990,7 +989,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			contentMap.put(ContentConstants.ORGANISATION, organisation)
 			contentMap.put(ContentConstants.CHANNEL, channel)
 			contentMap.put(ContentConstants.CREATOR_CONTACTS, creatorContacts)
-			contentMap.put(ContentConstants.FRAMEWORK, frameWork)
 			contentMap.put(ContentConstants.CONTENT_TYPE, contentType)
 			contentMap.put(ContentConstants.PRIMARY_CATEGORY, primaryCategory)
 			contentMap.put(ContentConstants.MIME_TYPE, mimeType)
@@ -1006,21 +1004,19 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			contentMap.put(ContentConstants.PREVIOUS_VERSION_COURSE_ID, sourceCollectionId)
 			contentMap.put(ContentConstants.CONTENT_VERSION, nextVersion)
 
-			val createReq = new Request()
-			createReq.setOperation("createContent")
-			createReq.setRequest(contentMap)
-			createReq.setContext(new java.util.HashMap[String, AnyRef]() {
-				{
-					put("graph_id", "domain")
-					put("version", ContentConstants.SCHEMA_VERSION)
-					put("objectType", ContentConstants.CONTENT_OBJECT_TYPE)
-					put("schemaName", ContentConstants.CONTENT_SCHEMA_NAME)
-				}
-			})
+      val createReq = new Request()
+      createReq.setOperation("createContent")
+      createReq.setRequest(contentMap)
+      createReq.setContext(new java.util.HashMap[String, AnyRef]() {{
+        put("graph_id", "domain")
+        put("version", "1.0")
+        put("objectType", "Collection")
+        put("schemaName", "collection")
+      }})
 			create(createReq).flatMap { createResp =>
 				val newCourseId = createResp.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
 
-				//UPDATE OLD COURSE contentVersionInfo
+				/*//UPDATE OLD COURSE contentVersionInfo
 				val newEntry = new java.util.HashMap[String, AnyRef]() {
 					{
 						put(ContentConstants.IDENTIFIER, newCourseId)
@@ -1046,12 +1042,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 					}
 				})
 				systemUpdate(updateOldReq).map { _ =>
-					val response = ResponseHandler.OK()
-					response.put("newVersionId", newCourseId)
-					response.put("previousVersionId", sourceCollectionId)
-					response.put(ContentConstants.CONTENT_VERSION, nextVersion)
-					response
-				}
+
+				}*/
+        val response = ResponseHandler.OK()
+        response.put("newVersionId", newCourseId)
+        response.put("previousVersionId", sourceCollectionId)
+        response.put(ContentConstants.CONTENT_VERSION, nextVersion)
+        response
 			}
 		}
 	}
