@@ -1048,7 +1048,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
         response.put("newVersionId", newCourseId)
         response.put("previousVersionId", sourceCollectionId)
         response.put(ContentConstants.CONTENT_VERSION, nextVersion)
-        response
+        Future.successful(response)
 			}
 		}
 	}
