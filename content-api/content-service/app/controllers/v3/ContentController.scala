@@ -313,4 +313,24 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
       getResult(ApiId.RETIREMENT_REQUEST_DECIDE_V1, contentActor, contentRequest)
     }
 
+    def getRetirementStatus = Action.async { implicit request =>
+        val headers = commonHeaders()
+        val wrapper = requestBody()
+        wrapper.putAll(headers)
+        val contentRequest =
+            getRequest(wrapper, headers, "getRetirementStatus")
+        setRequestContext(contentRequest, version, objectType, schemaName)
+        val userId =
+            request.headers.get("x-authenticated-userid")
+              .orElse(request.headers.get("X-Authenticated-Userid"))
+              .getOrElse("")
+        contentRequest.getContext.put("X-Authenticated-Userid", userId)
+        getResult(
+            ApiId.RETIREMENT_STATUS_V1,
+            contentActor,
+            contentRequest
+        )
+    }
+
+
 }

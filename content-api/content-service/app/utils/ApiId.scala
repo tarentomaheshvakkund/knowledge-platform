@@ -114,4 +114,6 @@ object ApiId {
   val VALIDATE_RETIREMENT= "api.content.v1.retire.validation"
 
   val RETIREMENT_REQUEST_DECIDE_V1 = "api.content.v1.retire.request.decide"
+
+	val RETIREMENT_STATUS_V1 = "api.content.v1.retirement.status"
 }

@@ -32,18 +32,15 @@ import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 
-import java.time.{Instant, LocalDate, ZoneId, ZonedDateTime}
-import java.time.{ZoneId, ZonedDateTime}
+import java.time.{Instant, LocalDate, ZoneId, ZoneOffset, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import scala.collection.{JavaConverters, Map}
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
-import org.sunbird.common.dto.{Response, ResponseHandler}
-import org.sunbird.common.exception.{ErrorCodes, ResponseCode, ServerException}
 import org.sunbird.cassandra.{CassandraConnector, CassandraStore}
-
+import java.time.temporal.ChronoUnit
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -91,6 +88,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
       case "scheduleRetirement" => scheduleRetirement(request)
       case "isRetirementScheduled" => isRetirementScheduled(request)
       case "decideRetirementRequest" => decideRetirementRequest(request)
+			case "getRetirementStatus" => getRetirementStatus(request)
 			case _ => ERROR(request.getOperation)
 				}
 		}
@@ -1321,11 +1319,23 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
     update.where
       .and(QueryBuilder.eq(ContentConstants.RETITEMENT_PRIMARY_KEY, contentId))
       .and(QueryBuilder.eq(ContentConstants.RQST_ID, requestId))
+		val (approvedFlag, statusValue) =
+			action match {
+				case ContentConstants.APPROVE =>
+					(java.lang.Boolean.TRUE, ContentConstants.APPROVED_KEY)
+				case ContentConstants.REJECT =>
+					(java.lang.Boolean.FALSE, ContentConstants.REJECTED)
+				case _ =>
+					throw new ClientException(
+						ContentConstants.ERR_INVALID_REQUEST,
+						s"Invalid action for retirement decision: $action"
+					)
+			}
     update
       .`with`(QueryBuilder.set(ContentConstants.APPROVED, java.lang.Boolean.TRUE))
       .and(QueryBuilder.set(ContentConstants.APPROVED_BY_RQST, approvedBy))
       .and(QueryBuilder.set(ContentConstants.APPROVED_AT, new java.util.Date()))
-      .and(QueryBuilder.set(ContentConstants.STATUS, ContentConstants.APPROVED_KEY))
+      .and(QueryBuilder.set(ContentConstants.STATUS, statusValue))
       .and(QueryBuilder.set(ContentConstants.APPROVED_COMMENT, action))
 
     CassandraConnector.getSession
@@ -1402,16 +1412,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
           ContentConstants.ERR_INVALID_CONTENT_ID,
           s"Content is not found for identifier: $id"
         )
-
       val metadata = node.getMetadata
       val status = Option(metadata.get("status")).map(_.toString).getOrElse("")
-
       if (StringUtils.isBlank(status))
         throw new ClientException(
           "ERR_METADATA_ISSUE",
           s"Content metadata error, status is blank for identifier: ${node.getIdentifier}"
         )
-
       action match {
         case ContentConstants.APPROVE =>
           request.getRequest.put(
@@ -1424,24 +1431,37 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
               toOffsetTimestamp(lastEnrollmentDate)
             )
           }
-
-          if (retirementDate != null) {
-            request.getRequest.put(
-              ContentConstants.RETIREMENT_DATE,
-              toOffsetTimestamp(retirementDate)
-            )
-          }
-
-        case ContentConstants.REJECT =>
+					if (lastEnrollmentDate != null && retirementDate != null) {
+						val lastEnrollmentdateFetched = toLocalDate(lastEnrollmentDate)
+						val retirementDateFetched  = toLocalDate(retirementDate)
+						val retirementGapInDays =
+							ChronoUnit.DAYS.between(lastEnrollmentdateFetched, retirementDateFetched)
+						val newRetirementDate =
+							LocalDate.now().plusDays(retirementGapInDays)
+						request.getRequest.put(
+							ContentConstants.RETIREMENT_DATE,
+							toOffsetTimestamp(newRetirementDate)
+						)
+						logger.info(
+							s"[RETIRE-DECIDE][RETIREMENT-DATE-RECALC] " + s"lastEnrollment=$lastEnrollmentdateFetched, " +
+								s"oldRetirement=$retirementDateFetched, " + s"diffDays=$retirementGapInDays, " + s"newRetirement=$newRetirementDate"
+						)
+					}
+				case ContentConstants.REJECT =>
           request.getRequest.put(
             ContentConstants.CONTENT_RETIREMENT_STS,
             ContentConstants.REJECTED
           )
       }
+			request.setContext(new java.util.HashMap[String, AnyRef]() {{
+				put("graph_id", "domain")
+				put("version", "1.0")
+				put("objectType", "Collection")
+				put("schemaName", "collection")
+			}})
       request.getRequest.put("versionKey", metadata.get("versionKey"))
       RequestUtil.restrictProperties(request)
       request.getContext.put(ContentConstants.IDENTIFIER, id)
-
       systemUpdate(request).map { updatedResp =>
         logger.info(
           s"[RETIRE-DECIDE][CONTENT-UPDATE] action=$action, contentId=$id"
@@ -1472,4 +1492,144 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
           .format(formatter)
     }
   }
+
+	def getRetirementStatus(request: Request)(implicit ec: ExecutionContext): Future[Response] = {
+		logger.info("[RETIREMENT-STATUS] Inside getRetirementStatus")
+		import scala.collection.JavaConverters._
+		val reqMap: java.util.Map[String, AnyRef] =
+			Option(request.getRequest)
+				.getOrElse(
+					throw new ClientException(
+						ContentConstants.ERR_INVALID_REQUEST,
+						"Request body is missing"
+					)
+				)
+		val contentIds: List[String] =
+			Option(reqMap.get("contentId"))
+				.map(_.asInstanceOf[java.util.List[String]].asScala.toList)
+				.getOrElse(
+					throw new ClientException(
+						ContentConstants.ERR_INVALID_REQUEST,
+						"contentId is missing"
+					)
+				)
+		logger.info(
+			s"[RETIREMENT-STATUS][REQUEST] contentIds=${contentIds.mkString(",")}"
+		)
+		val externalProperties: List[String] =
+			Platform.config
+				.getStringList(ContentConstants.RETIREMENT_READ_COLUMNS)
+				.asScala
+				.toList
+		val propertiesMapping: scala.collection.immutable.Map[String, String] =
+			scala.collection.immutable.Map.empty
+		retirementRequestStore
+			.read(contentIds, externalProperties, propertiesMapping)
+			.map { resp: Response =>
+				logger.info(
+					s"[RETIREMENT-STATUS][SUCCESS] responseCode=${resp.getResponseCode}"
+				)
+				val fetchedData =
+					resp.getResult.asInstanceOf[java.util.Map[String, AnyRef]]
+				val contentList = buildRetirementStatusResponse(fetchedData)
+				ResponseHandler.OK
+					.put("content", contentList)
+			}
+	}
+
+	private def buildRetirementStatusResponse(fetchedData: java.util.Map[String, AnyRef]): java.util.List[java.util.Map[String, AnyRef]] = {
+		import scala.collection.JavaConverters._
+		fetchedData.asScala.map {
+			case (contentId: String, rowAny: AnyRef) =>
+				val retirementData =
+					rowAny.asInstanceOf[java.util.Map[String, AnyRef]]
+				val updatedData: java.util.Map[String, AnyRef] =
+					new java.util.HashMap[String, AnyRef]()
+				// always present
+				updatedData.put(ContentConstants.CONTENT_ID, contentId)
+				Option(retirementData.get(ContentConstants.LAST_ENROLLMENT_DATE_RQST))
+					.foreach { v =>
+						updatedData.put(
+							ContentConstants.LAST_ENROLLMENT_DATE,
+							toIsoDate(v)
+						)
+					}
+				Option(retirementData.get(ContentConstants.RETIREMENT_DATE_RQST))
+					.foreach { v =>
+						updatedData.put(
+							ContentConstants.RETIREMENT_DATE,
+							toIsoDate(v)
+						)
+					}
+				Option(retirementData.get(ContentConstants.STATUS))
+					.foreach { result =>
+						updatedData.put(
+							ContentConstants.STATUS,
+							result.toString
+						)
+					}
+				Option(retirementData.get(ContentConstants.RSN_FOR_RETIREMENT))
+					.foreach { result =>
+						updatedData.put(
+							ContentConstants.REASON,
+							result
+						)
+					}
+				Option(retirementData.get(ContentConstants.USER_ID_RAISED_FIELD))
+					.foreach { result =>
+						updatedData.put(
+							ContentConstants.USER_ID_RAISED,
+							result
+						)
+					}
+				updatedData
+		}.toList.asJava
+	}
+
+	import java.time.{LocalDate => JLocalDate, ZoneOffset}
+	import java.time.format.DateTimeFormatter
+
+	private val ISO_FORMATTER =
+		DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+
+	private def toIsoDate(value: AnyRef): String = {
+		value match {
+			case date: com.datastax.driver.core.LocalDate =>
+				JLocalDate
+					.of(date.getYear, date.getMonth, date.getDay)
+					.atStartOfDay()
+					.atZone(ZoneOffset.UTC)
+					.format(ISO_FORMATTER)
+			case date: java.util.Date =>
+				date.toInstant
+					.atZone(ZoneOffset.UTC)
+					.format(ISO_FORMATTER)
+			case _ =>
+				null
+		}
+	}
+
+	import java.time._
+
+	private val OFFSET_FORMATTER =
+		DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+
+	private def toLocalDate(value: AnyRef): LocalDate = {
+		value match {
+			case date: com.datastax.driver.core.LocalDate =>
+				LocalDate.of(date.getYear, date.getMonth, date.getDay)
+			case dateString: String =>
+				LocalDate.parse(dateString)
+			case _ =>
+				throw new IllegalArgumentException(s"Unsupported date type: $value")
+		}
+	}
+
+	private def toOffsetTimestamp(date: LocalDate): String = {
+		date
+			.atStartOfDay()
+			.atZone(ZoneId.systemDefault())
+			.format(OFFSET_FORMATTER)
+	}
+
 }

@@ -222,6 +222,12 @@ object RetireManager {
               "ERR_METADATA_ISSUE",
               "Content metadata error, status is blank for identifier: " + node.getIdentifier
             )
+          request.setContext(new java.util.HashMap[String, AnyRef]() {{
+            put("graph_id", "domain")
+            put("version", "1.0")
+            put("objectType", "Collection")
+            put("schemaName", "collection")
+          }})
           request.getRequest.put(ContentConstants.CONTENT_RETIREMENT_STS, ContentConstants.PENDING_APPROVAL)
           request.getRequest.put("versionKey", metadata.get("versionKey"))
           RequestUtil.restrictProperties(request)
