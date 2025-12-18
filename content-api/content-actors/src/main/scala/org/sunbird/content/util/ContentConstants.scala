@@ -173,4 +173,9 @@ object ContentConstants {
     val REJECTED = "Rejected"
     val LAST_ENROLLMENT_DATE_RQST = "last_enrollment_date"
     val RETIREMENT_DATE_RQST = "retirement_date"
+    val ACCESS_SETTING_RULES_V2_TABLE = "access.settings.rules.v2.table"
+    val CONTEXT_ID= "contextid"
+    val CONTEXT_ID_TYPE= "contextidtype"
+    val CONTEXT_DATA= "contextdata"
+    val IS_ARCHIVED= "isarchived"
 }

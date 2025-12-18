@@ -1013,41 +1013,16 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
       }})
 			create(createReq).flatMap { createResp =>
 				val newCourseId = createResp.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
-
-				/*//UPDATE OLD COURSE contentVersionInfo
-				val newEntry = new java.util.HashMap[String, AnyRef]() {
-					{
-						put(ContentConstants.IDENTIFIER, newCourseId)
-						put(ContentConstants.CONTENT_VERSION, nextVersion)
-						put(ContentConstants.CONTENT_NAME, newName)
+				copyAccessSettingsForNewCourse(sourceCollectionId, newCourseId)
+					.map { _ =>
+						val response = ResponseHandler.OK()
+						response.put("newVersionId", newCourseId)
+						response.put("previousVersionId", sourceCollectionId)
+						response.put(ContentConstants.CONTENT_VERSION, nextVersion)
+						response
 					}
-				}
-				versionList.add(newEntry)
-				val updateOldReq = new Request()
-				updateOldReq.setOperation("systemUpdate")
-				updateOldReq.setRequest(new java.util.HashMap[String, AnyRef]() {
-					{
-						put(ContentConstants.CONTENT_VERSION_INFO, versionList)
-					}
-				})
-				updateOldReq.setContext(new java.util.HashMap[String, AnyRef]() {
-					{
-						put("graph_id", "domain")
-						put("version", ContentConstants.SCHEMA_VERSION)
-						put("objectType", ContentConstants.CONTENT_OBJECT_TYPE)
-						put("schemaName", ContentConstants.CONTENT_SCHEMA_NAME)
-						put(ContentConstants.IDENTIFIER, sourceCollectionId)
-					}
-				})
-				systemUpdate(updateOldReq).map { _ =>
-
-				}*/
-        val response = ResponseHandler.OK()
-        response.put("newVersionId", newCourseId)
-        response.put("previousVersionId", sourceCollectionId)
-        response.put(ContentConstants.CONTENT_VERSION, nextVersion)
-        Future.successful(response)
 			}
+
 		}
 	}
 
@@ -1631,5 +1606,87 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			.atZone(ZoneId.systemDefault())
 			.format(OFFSET_FORMATTER)
 	}
+
+	private def copyAccessSettingsForNewCourse(oldCourseId: String, newCourseId: String)(implicit ec: ExecutionContext): Future[Unit] = {
+		val keySpace = Platform.config.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE)
+		val table = Platform.config.getString(ContentConstants.ACCESS_SETTING_RULES_V2_TABLE)
+		val accessRuleStore = new ExternalStore(
+			keySpace = keySpace,
+			table = table,
+			primaryKey = java.util.Arrays.asList(ContentConstants.CONTEXT_ID, ContentConstants.CONTEXT_ID_TYPE)
+		)
+		val readColumns = List(
+			ContentConstants.CONTEXT_ID_TYPE,
+			ContentConstants.CONTEXT_DATA,
+			ContentConstants.IS_ARCHIVED
+		)
+		val propsMapping: scala.collection.immutable.Map[String, String] =
+			scala.collection.immutable.Map(ContentConstants.CONTEXT_DATA -> "string")
+		val sourceId: String = oldCourseId
+
+		accessRuleStore
+			.read(
+				identifier = sourceId,
+				extProps = readColumns,
+				propsMapping = propsMapping
+			)
+			.flatMap { readResp =>
+				if (readResp.getResponseCode == ResponseCode.OK) {
+
+					val insertMap = new java.util.HashMap[String, AnyRef]()
+
+					// Primary key for new row
+					insertMap.put(ContentConstants.IDENTIFIER, newCourseId)
+
+					// Copy remaining fields as-is
+					val contextIdType: String =
+						Option(readResp.get(ContentConstants.CONTEXT_ID_TYPE))
+							.map(_.toString)
+							.filter(_.nonEmpty)
+							.getOrElse("Course")
+					insertMap.put(ContentConstants.CONTEXT_ID_TYPE, contextIdType)
+
+					val contextDataRaw = readResp.get(ContentConstants.CONTEXT_DATA)
+
+					val updatedContextDataString: String = try {
+						val parsed: java.util.Map[String, AnyRef] =
+							contextDataRaw match {
+								case s: String =>
+									JsonUtils.deserialize(s, classOf[java.util.Map[String, AnyRef]])
+								case m: java.util.Map[_, _] =>
+									m.asInstanceOf[java.util.Map[String, AnyRef]]
+								case _ => null
+							}
+
+						if (parsed != null) {
+							parsed.put(ContentConstants.CONTENT_ID, newCourseId)
+							JsonUtils.serialize(parsed)
+						} else {
+							contextDataRaw.toString
+						}
+					} catch {
+						case e: Exception =>
+							logger.warn("[ACCESS-SETTINGS] Failed to parse contextdata, using raw string", e)
+							contextDataRaw.toString
+					}
+					insertMap.put(ContentConstants.CONTEXT_DATA, updatedContextDataString)
+					insertMap.put(ContentConstants.IS_ARCHIVED, readResp.get(ContentConstants.IS_ARCHIVED))
+
+					accessRuleStore.insert(insertMap, propsMapping).map(_ => ())
+				} else {
+					// No record exists → nothing to copy
+					Future.successful(())
+				}
+			}
+			.recover {
+				case e: Exception =>
+					logger.error(
+						s"[ACCESS-SETTINGS][COPY-FAILED] oldCourseId=$oldCourseId, newCourseId=$newCourseId",
+						e
+					)
+					()
+			}
+	}
+
 
 }
