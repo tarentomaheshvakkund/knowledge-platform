@@ -1,29 +1,23 @@
 package org.sunbird.content.actors
 
-import com.fasterxml.jackson.databind.ObjectMapper
-
-import java.util
-import java.util.concurrent.CompletionException
-import java.io.File
-import org.apache.commons.io.FilenameUtils
-
-import javax.inject.Inject
-import org.apache.commons.lang3.ObjectUtils
-import org.apache.commons.lang3.StringUtils
+import com.datastax.driver.core.querybuilder.QueryBuilder
+import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
+import org.apache.commons.io.FilenameUtils
+import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
-import org.sunbird.content.util.{AcceptFlagManager, ContentConstants, CopyManager, DiscardManager, FlagManager, NotificationManager, RetireManager}
+import org.sunbird.cassandra.CassandraConnector
 import org.sunbird.cloudstore.StorageService
-import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
-import org.sunbird.common.exception.{ClientException, ErrorCodes, ResponseCode, ServerException}
+import org.sunbird.common.exception.{ClientException, ResponseCode}
+import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.content.dial.DIALManager
 import org.sunbird.content.review.mgr.ReviewManager
-import org.sunbird.util.RequestUtil
 import org.sunbird.content.upload.mgr.UploadManager
+import org.sunbird.content.util._
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.external.store.ExternalStore
@@ -31,16 +25,18 @@ import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
+import org.sunbird.util.RequestUtil
 
-import java.time.{Instant, LocalDate, ZoneId, ZoneOffset, ZonedDateTime}
+import java.io.File
 import java.time.format.DateTimeFormatter
-import scala.collection.{JavaConverters, Map}
-import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import com.datastax.driver.core.querybuilder.QueryBuilder
-import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
-import org.sunbird.cassandra.{CassandraConnector, CassandraStore}
 import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
+import java.util.concurrent.CompletionException
+import javax.inject.Inject
+import scala.collection.JavaConverters._
+import scala.collection.{JavaConverters, Map}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -948,6 +944,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val posterImage = oldMeta.getOrDefault(ContentConstants.POSTER_IMAGE, "").asInstanceOf[String]
 			val appIcon = oldMeta.getOrDefault(ContentConstants.APP_ICON, "").asInstanceOf[String]
 			val creatorLogo = oldMeta.getOrDefault(ContentConstants.CREATOR_LOGO, "").asInstanceOf[String]
+			val framework = oldMeta.getOrDefault(ContentConstants.FRAMEWORK, "").asInstanceOf[String]
 
 			if (!StringUtils.equalsIgnoreCase(status, "Live"))
 				throw new ClientException("ERR_INVALID_CONTENT_STATUS", s"Content $sourceCollectionId must be in Live status")
@@ -995,6 +992,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			contentMap.put(ContentConstants.COURSE_CATEGORY, oldMeta.get(ContentConstants.COURSE_CATEGORY))
 			contentMap.put(ContentConstants.CODE, scala.util.Random.nextInt(900000000) + 1000000000 toString)
 			contentMap.put(ContentConstants.LANGUAGE, util.Arrays.asList(baseLang.capitalize))
+			contentMap.put(ContentConstants.FRAMEWORK, framework)
 
 			if (StringUtils.isNotBlank(creatorLogo)) {
 				contentMap.put(ContentConstants.CREATOR_LOGO, creatorLogo)
@@ -1022,7 +1020,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 						response
 					}
 			}
-
 		}
 	}
 
@@ -1142,96 +1139,92 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
     RetireManager.isRetirementScheduled(request)
   }
 
-  def decideRetirementRequest(
-                               request: Request
-                             )(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
-    logger.info("Inside decideRetirementRequest method of RetireManager")
-    validateDecideRetirementRequest(request)
-    val outerMap = request.getRequest
-    val reqMap = Option(outerMap.get(ContentConstants.RQST))
-      .map(_.asInstanceOf[java.util.Map[String, AnyRef]])
-      .getOrElse(
-        throw new ClientException(
-          ContentConstants.ERR_INVALID_REQUEST,
-          "Request body is missing."
-        )
-      )
-    val contentId = Option(reqMap.get(ContentConstants.CONTENT_ID))
-      .map(_.toString.trim)
-      .filter(org.apache.commons.lang3.StringUtils.isNotBlank)
-      .getOrElse(
-        throw new ClientException(
-          ContentConstants.ERR_INVALID_CONTENT_ID,
-          ContentConstants.ERR_CONTENT_ID_MISSING
-        )
-      )
-    val action = Option(reqMap.get(ContentConstants.ACTION))
-      .map(_.toString.trim.toUpperCase)
-      .getOrElse(
-        throw new ClientException(
-          ContentConstants.ERR_INVALID_REQUEST,
-          "Action is missing"
-        )
-      )
-    val externalProperties: List[String] =
-      Platform.config.getStringList(ContentConstants.RETIREMENT_READ_COLUMNS)
-        .asScala
-        .toList
-    val propertyTypeMapping =
-      scala.collection.immutable.Map.empty[String, String]
-    for {
-      _ <- RetireManager.isRetirementScheduled(request).map(_ => ())
+	def decideRetirementRequest(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
+		logger.info("Inside decideRetirementRequest method of RetireManager")
+		validateDecideRetirementRequest(request)
+		val outerMap = request.getRequest
+		val reqMap = Option(outerMap.get(ContentConstants.RQST))
+			.map(_.asInstanceOf[java.util.Map[String, AnyRef]])
+			.getOrElse(
+				throw new ClientException(
+					ContentConstants.ERR_INVALID_REQUEST,
+					"Request body is missing."
+				)
+			)
+		val contentId = Option(reqMap.get(ContentConstants.CONTENT_ID))
+			.map(_.toString.trim)
+			.filter(org.apache.commons.lang3.StringUtils.isNotBlank)
+			.getOrElse(
+				throw new ClientException(
+					ContentConstants.ERR_INVALID_CONTENT_ID,
+					ContentConstants.ERR_CONTENT_ID_MISSING
+				)
+			)
+		val action = Option(reqMap.get(ContentConstants.ACTION))
+			.map(_.toString.trim.toUpperCase)
+			.getOrElse(
+				throw new ClientException(
+					ContentConstants.ERR_INVALID_REQUEST,
+					"Action is missing"
+				)
+			)
+		val externalProperties: List[String] =
+			Platform.config.getStringList(ContentConstants.RETIREMENT_READ_COLUMNS)
+				.asScala
+				.toList
+		val propertyTypeMapping =
+			scala.collection.immutable.Map.empty[String, String]
+		for {
+			_ <- RetireManager.isRetirementScheduled(request).map(_ => ())
+			readResp <- retirementRequestStore.read(contentId, externalProperties, propertyTypeMapping)
+			result <- {
+				if (readResp.getResponseCode != ResponseCode.OK) {
+					Future.successful(ResponseHandler.ERROR(ResponseCode.CLIENT_ERROR, "NOT_FOUND", "Retirement request not found"))
+				} else {
+					val dbRow = readResp.getResult.asInstanceOf[java.util.Map[String, AnyRef]]
+					val requestId = dbRow.get(ContentConstants.RQST_ID).toString
+					val approvedBy = extractUserId(request)
 
-      readResp <- retirementRequestStore.read(
-        contentId,
-        externalProperties,
-        propertyTypeMapping
-      )
+					//Build Audit Row from DB result
+					val auditRow = buildAuditRowFromDecisionResult(
+						contentId = contentId,
+						result = dbRow,
+						action = action,
+						approvedBy = approvedBy
+					)
+					updateRetirementRequestByCompositeKey(
+						contentId = contentId,
+						requestId = requestId,
+						approvedBy = approvedBy,
+						keySpace = Platform.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE, "sunbird_courses"),
+						table = Platform.getString(ContentConstants.CONTENT_RETIREMENT_RQST_TABLE, "content_retirement_requests"),
+						action = action
+					).flatMap { _ =>
 
-      _ <- {
-        if (readResp.getResponseCode != ResponseCode.OK) {
-          Future.successful(())
-        } else {
-          val result =
-            readResp.getResult.asInstanceOf[java.util.Map[String, AnyRef]]
-          val requestId =
-            result.get(ContentConstants.RQST_ID).toString
-          updateRetirementRequestByCompositeKey(
-            contentId = contentId,
-            requestId = requestId,
-            approvedBy = extractUserId(request),
-            keySpace = Platform.getString(
-              ContentConstants.SUNBIRD_COURSE_KEYSPACE,
-              "sunbird_courses"
-            ),
-            table = Platform.getString(
-              ContentConstants.CONTENT_RETIREMENT_RQST_TABLE,
-              "content_retirement_requests"
-            ),
-            action = action
-          ).flatMap { _ =>
-            markContentPendingRetirement(
-              request = request,
-              retirementResult = result,
-              action = action
-            ).map { resp =>
-              logger.info(
-                s"[RETIRE-DECIDE][CONTENT-UPDATE][SUCCESS] contentId=$contentId, action=$action"
-              )
-              resp
-            }
-          }
-        }
-      }
-    } yield {
-      logger.info(
-        s"[RETIRE-DECIDE][SUCCESS] contentId=$contentId, action=$action"
-      )
-      ResponseHandler.OK
-        .put("node_id", contentId)
-        .put("identifier", contentId)
-    }
-  }
+						// Then insert audit log
+						RetireManager.createRetirementAuditLog(auditRow).flatMap { _ =>
+
+							markContentPendingRetirement(
+								request = request,
+								retirementResult = dbRow,
+								action = action
+							).map { resp =>
+								logger.info(s"[RETIRE-DECIDE][CONTENT-UPDATE][SUCCESS] contentId=$contentId, action=$action")
+								resp
+							}
+						}
+					}
+				}
+			}
+		} yield {
+			logger.info(
+				s"[RETIRE-DECIDE][SUCCESS] contentId=$contentId, action=$action"
+			)
+			ResponseHandler.OK
+				.put("node_id", contentId)
+				.put("identifier", contentId)
+		}
+	}
 
   private def extractUserId(req: Request): String = {
     val fromContext = Option(req.getContext.get("X-Authenticated-Userid"))
@@ -1561,8 +1554,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		}.toList.asJava
 	}
 
-	import java.time.{LocalDate => JLocalDate, ZoneOffset}
 	import java.time.format.DateTimeFormatter
+	import java.time.{ZoneOffset, LocalDate => JLocalDate}
 
 	private val ISO_FORMATTER =
 		DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
@@ -1608,8 +1601,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	}
 
 	private def copyAccessSettingsForNewCourse(oldCourseId: String, newCourseId: String)(implicit ec: ExecutionContext): Future[Unit] = {
-		val keySpace = Platform.config.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE)
-		val table = Platform.config.getString(ContentConstants.ACCESS_SETTING_RULES_V2_TABLE)
+		val keySpace = Platform.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE, "sunbird_courses")
+		val table    = Platform.getString(ContentConstants.ACCESS_SETTING_RULES_V2_TABLE, "access_setting_rules_v2")
 		val accessRuleStore = new ExternalStore(
 			keySpace = keySpace,
 			table = table,
@@ -1688,5 +1681,23 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			}
 	}
 
+	private def buildAuditRowFromDecisionResult(contentId: String, result: java.util.Map[String, AnyRef], action: String, approvedBy: String): java.util.Map[String, AnyRef] = {
+		val nowTs = new java.sql.Timestamp(System.currentTimeMillis())
+		val auditRow = new java.util.HashMap[String, AnyRef]()
+
+		auditRow.put(ContentConstants.IDENTIFIER, contentId)
+		auditRow.put(ContentConstants.RQST_ID, result.get(ContentConstants.RQST_ID))
+		auditRow.put(ContentConstants.USER_ID_RAISED_FIELD, result.get(ContentConstants.USER_ID_RAISED_FIELD))
+		auditRow.put(ContentConstants.RSN_FOR_RETIREMENT, result.get(ContentConstants.RSN_FOR_RETIREMENT))
+		auditRow.put(ContentConstants.LST_ENR_DATE, result.get(ContentConstants.LST_ENR_DATE))
+		auditRow.put(ContentConstants.RET_DATE, result.get(ContentConstants.RET_DATE))
+
+		// fields
+		auditRow.put(ContentConstants.STATUS, action)
+		auditRow.put(ContentConstants.REVIEWED_BY, approvedBy)
+		auditRow.put(ContentConstants.REVIEWED_AT, nowTs)
+		auditRow.put(ContentConstants.REVIEWED_COMMENT, action)
+		auditRow
+	}
 
 }

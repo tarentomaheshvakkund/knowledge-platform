@@ -37,6 +37,7 @@ import scala.collection.JavaConversions._
 import scala.collection.JavaConverters.{asScalaBufferConverter, collectionAsScalaIterableConverter}
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import com.datastax.driver.core.utils.UUIDs
 
 object RetireManager {
     val finalStatus: util.List[String] = util.Arrays.asList("Flagged", "Live", "Unlisted")
@@ -298,6 +299,7 @@ object RetireManager {
       val rowMap = createRetirementRequestRow(contentId, reqMap)
       val propsMapping: Map[String, String] = Map.empty
       retirementRequestStore.insert(rowMap, propsMapping)
+      createRetirementAuditLog(rowMap)
     }
 
     private def validateNoCbPlanForContent(contentId: String)
@@ -639,5 +641,53 @@ object RetireManager {
       }
     }
 
+  def createRetirementAuditLog(rowMap: java.util.Map[String, AnyRef])
+                              (implicit ec: ExecutionContext): Future[Response] = {
+
+    val contentId = rowMap.get(ContentConstants.IDENTIFIER).toString
+    val id: String = UUIDs.timeBased().toString
+
+    // Reuse request_id if present, else generate new
+    val requestId: String =
+      Option(rowMap.get(ContentConstants.RQST_ID))
+        .map(_.toString)
+        .getOrElse(UUIDs.timeBased().toString)
+
+    val nowTs = new java.sql.Timestamp(System.currentTimeMillis())
+
+    val auditRow = new java.util.HashMap[String, AnyRef]()
+
+    auditRow.put(ContentConstants.IDENTIFIER, contentId)
+    auditRow.put(ContentConstants.ID, id)
+    auditRow.put(ContentConstants.RQST_ID, requestId)
+
+    // Directly reuse fields from rowMap (NO NEW VALIDATION)
+    auditRow.put(ContentConstants.USER_ID_RAISED_FIELD, rowMap.get(ContentConstants.USER_ID_RAISED_FIELD))
+    auditRow.put(ContentConstants.RSN_FOR_RETIREMENT, rowMap.get(ContentConstants.RSN_FOR_RETIREMENT))
+    auditRow.put(ContentConstants.LST_ENR_DATE, rowMap.get(ContentConstants.LST_ENR_DATE))
+    auditRow.put(ContentConstants.RET_DATE, rowMap.get(ContentConstants.RET_DATE))
+
+    // Reviewed fields are usually NULL for first request
+    auditRow.put("reviewed_by", rowMap.getOrDefault(ContentConstants.REVIEWED_BY, null))
+    auditRow.put("reviewed_at", rowMap.getOrDefault(ContentConstants.REVIEWED_AT, null))
+    auditRow.put("reviewed_comment", rowMap.getOrDefault(ContentConstants.REVIEWED_COMMENT, null))
+
+    auditRow.put(ContentConstants.CREATED_AT, nowTs)
+    auditRow.put(ContentConstants.UPDATED_AT, nowTs)
+
+    // Status is already set in rowMap
+    auditRow.put(ContentConstants.STATUS, rowMap.get(ContentConstants.STATUS))
+
+    val primaryKeys = java.util.Arrays.asList("content_id", "id")
+
+    val auditStore = new ExternalStore(
+      Platform.config.getString("cassandra.keyspace.course.content"),
+      Platform.config.getString("content.retirement.requests.audit"),
+      primaryKeys
+    )
+    auditStore.insert(auditRow, Map.empty).map { _ =>
+      ResponseHandler.OK()
+    }
+  }
 
 }
