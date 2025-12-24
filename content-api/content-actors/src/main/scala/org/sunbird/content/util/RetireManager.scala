@@ -1,17 +1,15 @@
 package org.sunbird.content.util
 
-import java.util
-import java.util.{Date, UUID}
-
 import org.apache.commons.collections4.CollectionUtils
 import org.apache.commons.lang.StringUtils
+import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.cache.impl.RedisCache
-import org.sunbird.common.{DateUtils, JsonUtils, Platform}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResourceNotFoundException, ServerException}
-import org.sunbird.graph.dac.model.Node
+import org.sunbird.common.{DateUtils, JsonUtils, Platform}
 import org.sunbird.graph.OntologyEngineContext
-import org.sunbird.graph.external.ExternalPropsManager
+import org.sunbird.graph.dac.model.Node
+import org.sunbird.graph.external.store.ExternalStore
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.ScalaJsonUtils
 import org.sunbird.kafka.client.KafkaClient
@@ -19,6 +17,8 @@ import org.sunbird.parseq.Task
 import org.sunbird.telemetry.logger.TelemetryManager
 import org.sunbird.utils.HierarchyConstants
 
+import java.util
+import java.util.{Date, UUID}
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.{ExecutionContext, Future}
@@ -26,6 +26,8 @@ import scala.concurrent.{ExecutionContext, Future}
 object RetireManager {
     val finalStatus: util.List[String] = util.Arrays.asList("Flagged", "Live", "Unlisted")
     private val kfClient = new KafkaClient
+
+    private val logger: Logger = LoggerFactory.getLogger("RetireManager")
 
     def retire(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
         validateRequest(request)
@@ -43,24 +45,24 @@ object RetireManager {
     }
 
     private def getNodeToRetire(request: Request)(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Node] = DataNode.read(request).map(node => {
-        if (StringUtils.equalsIgnoreCase("Retired", node.getMetadata.get(ContentConstants.STATUS).asInstanceOf[String]))
-            throw new ClientException(ContentConstants.ERR_CONTENT_RETIRE, "Content with Identifier " + node.getIdentifier + " is already Retired.")
-        node
+      if (StringUtils.equalsIgnoreCase("Retired", node.getMetadata.get(ContentConstants.STATUS).asInstanceOf[String]))
+        throw new ClientException(ContentConstants.ERR_CONTENT_RETIRE, "Content with Identifier " + node.getIdentifier + " is already Retired.")
+      node
     })
 
     private def validateRequest(request: Request) = {
-        val contentId: String = request.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
-        if (StringUtils.isBlank(contentId))
-            throw new ClientException(ContentConstants.ERR_INVALID_CONTENT_ID, "Please Provide Valid Content Identifier.")
+      val contentId: String = request.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
+      if (StringUtils.isBlank(contentId))
+        throw new ClientException(ContentConstants.ERR_INVALID_CONTENT_ID, "Please Provide Valid Content Identifier.")
     }
 
     private def updateNodesToRetire(request: Request, updateMetadataMap: util.Map[String, AnyRef])(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
-        RedisCache.delete(request.get(ContentConstants.IDENTIFIER).asInstanceOf[String])
-        val updateReq = new Request(request)
-        updateReq.put(ContentConstants.IDENTIFIERS, java.util.Arrays.asList(request.get(ContentConstants.IDENTIFIER).asInstanceOf[String], request.get(ContentConstants.IDENTIFIER).asInstanceOf[String] + HierarchyConstants.IMAGE_SUFFIX))
-        updateReq.put(ContentConstants.METADATA, updateMetadataMap)
-        DataNode.bulkUpdate(updateReq).map(node => ResponseHandler.OK())
-    }
+          RedisCache.delete(request.get(ContentConstants.IDENTIFIER).asInstanceOf[String])
+          val updateReq = new Request(request)
+          updateReq.put(ContentConstants.IDENTIFIERS, java.util.Arrays.asList(request.get(ContentConstants.IDENTIFIER).asInstanceOf[String], request.get(ContentConstants.IDENTIFIER).asInstanceOf[String] + HierarchyConstants.IMAGE_SUFFIX))
+          updateReq.put(ContentConstants.METADATA, updateMetadataMap)
+          DataNode.bulkUpdate(updateReq).map(node => ResponseHandler.OK())
+      }
 
 
     private def handleCollectionToRetire(node: Node, request: Request, updateMetadataMap: Map[String, AnyRef])(implicit ec: ExecutionContext, oec: OntologyEngineContext): Future[Response] = {
@@ -107,5 +109,4 @@ object RetireManager {
     }
 
     private def getLearningGraphEvent(request: Request, id: String): Map[String, Any] = Map("ets" -> System.currentTimeMillis(), "channel" -> request.getContext.get(ContentConstants.CHANNEL), "mid" -> UUID.randomUUID.toString, "nodeType" -> "DATA_NODE", "userId" -> "Ekstep", "createdOn" -> DateUtils.format(new Date()), "objectType" -> "Content", "nodeUniqueId" -> id, "operationType" -> "DELETE", "graphId" -> request.getContext.get("graph_id"))
-
 }

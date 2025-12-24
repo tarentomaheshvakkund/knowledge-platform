@@ -1,41 +1,42 @@
 package org.sunbird.content.actors
 
-import com.fasterxml.jackson.databind.ObjectMapper
-
-import java.util
-import java.util.concurrent.CompletionException
-import java.io.File
-import org.apache.commons.io.FilenameUtils
-
-import javax.inject.Inject
-import org.apache.commons.lang3.ObjectUtils
-import org.apache.commons.lang3.StringUtils
+import com.datastax.driver.core.querybuilder.QueryBuilder
+import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
+import org.apache.commons.io.FilenameUtils
+import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
-import org.sunbird.content.util.{AcceptFlagManager, ContentConstants, CopyManager, DiscardManager, FlagManager, NotificationManager, RetireManager}
+import org.sunbird.cassandra.CassandraConnector
 import org.sunbird.cloudstore.StorageService
-import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResponseCode}
+import org.sunbird.common.{ContentParams, JsonUtils, Platform, Slug}
 import org.sunbird.content.dial.DIALManager
 import org.sunbird.content.review.mgr.ReviewManager
-import org.sunbird.util.RequestUtil
 import org.sunbird.content.upload.mgr.UploadManager
+import org.sunbird.content.util._
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
+import org.sunbird.graph.external.store.ExternalStore
 import org.sunbird.graph.nodes.DataNode
 import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
+import org.sunbird.util.RequestUtil
 
-import java.time.{ZoneId, ZonedDateTime}
+import java.io.File
 import java.time.format.DateTimeFormatter
-import scala.collection.{JavaConverters, Map}
+import java.time.temporal.ChronoUnit
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.util
+import java.util.concurrent.CompletionException
+import javax.inject.Inject
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.collection.{JavaConverters, Map}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -44,6 +45,18 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	private lazy val importMgr = new ImportManager(importConfig)
 	private val logger: Logger = LoggerFactory.getLogger("ContentActor")
 	val excludedCategories: Set[String] = Set(ContentConstants.LEARNING_RESOURCE)
+  private val retirementRequestKeyspace: String =
+    Platform.getString(ContentConstants.SUNBIRD_COURSE_KEYSPACE, "sunbird_courses")
+
+  private val retirementRequestTable: String =
+    Platform.getString(ContentConstants.CONTENT_RETIREMENT_RQST_TABLE, "content_retirement_requests")
+
+  private val retirementRequestStore =
+    new ExternalStore(
+      retirementRequestKeyspace,
+      retirementRequestTable,
+      util.Arrays.asList(ContentConstants.RETITEMENT_PRIMARY_KEY)
+    )
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -68,8 +81,8 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			case "reviewMLContent" => reviewMLContent(request)
 			case "updateReviewStatusMLContent" => updateReviewStatusMLContent(request)
 			case _ => ERROR(request.getOperation)
+				}
 		}
-	}
 
 	def create(request: Request): Future[Response] = {
 		populateDefaultersForCreation(request)
@@ -289,6 +302,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def retire(request: Request): Future[Response] = {
 		RetireManager.retire(request)
 	}
+
 	def discard(request: Request): Future[Response] = {
 		RequestUtil.restrictProperties(request)
 		DiscardManager.discard(request)
