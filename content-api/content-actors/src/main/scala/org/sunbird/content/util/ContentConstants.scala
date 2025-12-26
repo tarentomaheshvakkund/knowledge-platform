@@ -178,4 +178,6 @@ object ContentConstants {
     val CONTEXT_ID_TYPE= "contextidtype"
     val CONTEXT_DATA= "contextdata"
     val IS_ARCHIVED= "isarchived"
+    val CONTENT_COPY_FIELDS = "content.copy.fields"
+
 }

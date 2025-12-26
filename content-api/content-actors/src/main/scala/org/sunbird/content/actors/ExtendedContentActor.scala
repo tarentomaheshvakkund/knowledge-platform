@@ -49,6 +49,9 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       retirementRequestTable,
       util.Arrays.asList(ContentConstants.RETITEMENT_PRIMARY_KEY)
     )
+  private val copyFields: Set[String] =
+    Platform.config.getStringList(ContentConstants.CONTENT_COPY_FIELDS).asScala.toSet
+
 
   override def onReceive(request: Request): Future[Response] = {
     request.getOperation match {
@@ -153,6 +156,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       contentMap.put(ContentConstants.CODE, scala.util.Random.nextInt(900000000) + 1000000000 toString)
       contentMap.put(ContentConstants.LANGUAGE, util.Arrays.asList(baseLang.capitalize))
       contentMap.put(ContentConstants.FRAMEWORK, framework)
+      copyConfigurableFields(oldMeta, contentMap, copyFields)
 
       if (StringUtils.isNotBlank(creatorLogo)) {
         contentMap.put(ContentConstants.CREATOR_LOGO, creatorLogo)
@@ -864,5 +868,24 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
         null
     }
   }
+
+  def copyConfigurableFields(oldMeta: java.util.Map[String, AnyRef], targetMap: java.util.Map[String, AnyRef], fieldsToCopy: Set[String]): Unit = {
+    fieldsToCopy.foreach { field =>
+      Option(oldMeta.get(field)) match {
+        case Some(b: java.lang.Boolean) =>
+          targetMap.put(field, b)
+        case Some(s: String) if StringUtils.isNotBlank(s) =>
+          targetMap.put(field, s)
+        case Some(l: java.util.List[_]) =>
+          targetMap.put(field, l)
+        case Some(m: java.util.Map[_, _]) =>
+          targetMap.put(field, m.asInstanceOf[AnyRef])
+
+        // Ignore everything else safely
+        case _ =>
+      }
+    }
+  }
+
 
 }
