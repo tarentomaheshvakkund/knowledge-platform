@@ -28,7 +28,7 @@ POST     /content/v3/dialcode/reserve/:identifier controllers.v3.ContentControll
 PATCH    /content/v3/dialcode/release/:identifier controllers.v3.ContentController.releaseDialcodes(identifier:String)
 POST     /content/v3/reject/:identifier           controllers.v4.ContentController.reviewReject(identifier:String)
 POST     /content/v3/unlisted/publish/:identifier  controllers.v3.ContentController.publishUnlisted(identifier:String)
-
+GET       /content/v3/extended/read/:identifier    controllers.v3.ContentController.extendedRead(identifier:String, mode:Option[String], fields:Option[String])
 
 # Collection APIs
 PATCH     /content/v3/hierarchy/add         controllers.v3.ContentController.addHierarchy
