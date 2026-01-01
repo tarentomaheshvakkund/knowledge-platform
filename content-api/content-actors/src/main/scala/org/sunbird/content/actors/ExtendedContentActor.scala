@@ -633,6 +633,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
           "ERR_METADATA_ISSUE",
           s"Content metadata error, status is blank for identifier: ${node.getIdentifier}"
         )
+      var notificationType = "RETIRED"
       action match {
         case ContentConstants.APPROVE =>
           request.getRequest.put(
@@ -666,6 +667,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
             ContentConstants.CONTENT_RETIREMENT_STS,
             ContentConstants.REJECTED
           )
+          notificationType = "RETIRED_REJECTED"
       }
       request.setContext(new java.util.HashMap[String, AnyRef]() {{
         put("graph_id", "domain")
@@ -684,7 +686,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
         if (StringUtils.isNotBlank(requestedBy)) {
           NotificationManager.sendNotification(
-            "RETIRED",
+            notificationType,
             "ALERT",
             List(requestedBy),
             node.getMetadata.get("name").toString,
