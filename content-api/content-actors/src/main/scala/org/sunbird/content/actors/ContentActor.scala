@@ -922,7 +922,7 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def extendedRead(request: Request): Future[Response] = {
 		//Extract identifier and build cache key
 		val identifier = request.getRequest.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String]
-		val cacheKey = s"${ContentConstants.EXTENDED_READ_LEARNINGPATHWAY_CACHE_KEY_PREFIX}$identifier"
+		val cacheKey = s"${ContentConstants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX}$identifier"
 		//Check Redis cache for pre-computed enriched data
 		val cachedData = RedisCache.get(cacheKey)
 		if (cachedData != null && cachedData.nonEmpty) {
@@ -940,39 +940,63 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
 			val contentKey = if (responseSchemaName.isEmpty) ContentConstants.CONTENT else responseSchemaName
 			val contentMetadata = response.getResult.get(contentKey).asInstanceOf[util.Map[String, AnyRef]]
-			//Check if this is a Learning Pathway with milestones
+			//Get course category and handle different enrichment strategies
 			val courseCategory = contentMetadata.getOrDefault(ContentConstants.COURSE_CATEGORY, "").asInstanceOf[String]
-			if (StringUtils.equalsIgnoreCase(courseCategory, ContentConstants.LEARNING_PATHWAY) &&
-				contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
-				contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
-				//Extract and parse milestones_v1 (handle both String and List types)
-				val milestonesRaw = contentMetadata.get(ContentConstants.MILESTONES_V1)
-				val milestones: util.List[util.Map[String, AnyRef]] = milestonesRaw match {
-					case s: String =>
-						JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
-					case list: util.List[_] =>
-						list.asInstanceOf[util.List[util.Map[String, AnyRef]]]
-					case _ =>
-						logger.warn(s"[extendedRead] Unexpected milestones_v1 type: $identifier")
-						new util.ArrayList[util.Map[String, AnyRef]]()
-				}
-				//Enrich milestones by fetching course hierarchy and assessment data
-				enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
-					contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
-					response.getResult.put(contentKey, contentMetadata)
-					// Cache the enriched response for future requests
-					try {
-						val serializedResponse = JsonUtils.serialize(response)
-						RedisCache.set(cacheKey, serializedResponse, extendedContentReadCacheTTL)
-					} catch {
-						case e: Exception =>
-							logger.error(s"[extendedRead] Cache set failed for $identifier", e)
-					}
-					response
-				}
-			} else {
-				// Not a Learning Pathway or no milestones - return standard response
+			//Switch based on course category type
+			val enrichmentFuture = if (StringUtils.isBlank(courseCategory)) {
+				//No course category - return as is
 				Future.successful(response)
+			} else {
+				courseCategory.toLowerCase match {
+					//Case 1: Learning Pathway - enrich milestones with course hierarchy and assessments
+					case category if StringUtils.equalsIgnoreCase(category, ContentConstants.LEARNING_PATHWAY) =>
+						if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) && 
+							contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
+							//Extract and parse milestones_v1 (handle both String and List types)
+							val milestonesRaw = contentMetadata.get(ContentConstants.MILESTONES_V1)
+							val milestones: util.List[util.Map[String, AnyRef]] = milestonesRaw match {
+								case s: String =>
+									JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
+								case list: util.List[_] =>
+									list.asInstanceOf[util.List[util.Map[String, AnyRef]]]
+								case _ =>
+									logger.warn(s"[extendedRead] Unexpected milestones_v1 type: $identifier")
+									new util.ArrayList[util.Map[String, AnyRef]]()
+							}
+							//Enrich milestones by fetching course hierarchy and assessment data
+							enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
+								contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
+								response.getResult.put(contentKey, contentMetadata)
+								response
+							}
+						} else {
+							//Learning Pathway without milestones - return as is
+							Future.successful(response)
+						}
+					//Case 2: Default - Any other course category
+					//Fetch and add hierarchy children to the content metadata
+					case _ =>
+						logger.info(s"[extendedRead] Enriching course category: $courseCategory for identifier: $identifier")
+						fetchCourseWithHierarchy(identifier, request).map { courseDataWithHierarchy =>
+							//Merge hierarchy children into content metadata
+							if (courseDataWithHierarchy.containsKey(ContentConstants.CHILDREN)) {
+								contentMetadata.put(ContentConstants.CHILDREN, courseDataWithHierarchy.get(ContentConstants.CHILDREN))
+							}
+							response.getResult.put(contentKey, contentMetadata)
+							response
+						}
+				}
+			}
+			//Cache the enriched response
+			enrichmentFuture.map { enrichedResponse =>
+				try {
+					val serializedResponse = JsonUtils.serialize(enrichedResponse)
+					RedisCache.set(cacheKey, serializedResponse, extendedContentReadCacheTTL)
+				} catch {
+					case e: Exception =>
+						logger.error(s"[extendedRead] Cache set failed for $identifier", e)
+				}
+				enrichedResponse
 			}
 		}.recover {
 			case e: ClientException =>
