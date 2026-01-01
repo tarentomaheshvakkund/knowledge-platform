@@ -385,6 +385,7 @@ object ExtendedRetireManager {
     val validationsF: Future[Unit] = for {
       _ <- validateNoParentCollection(request)
       _ <- validateNoCbPlanForContent(contentId)
+      _ <- validateMultilingualRetirement(contentId)
     } yield ()
     validationsF.map { _ =>
       val resp = ResponseHandler.OK()
