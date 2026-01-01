@@ -594,5 +594,4 @@ object ExtendedRetireManager {
     }
   }
 
-
 }
