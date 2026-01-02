@@ -2,8 +2,6 @@ package org.sunbird.content.actors
 
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
-import com.mashape.unirest.http.Unirest
-import org.apache.commons.collections4.CollectionUtils
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.actor.core.BaseActor
