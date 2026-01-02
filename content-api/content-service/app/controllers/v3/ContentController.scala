@@ -331,16 +331,4 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
             contentRequest
         )
     }
-
-    def extendedRead(identifier: String, mode: Option[String], fields: Option[String]) = Action.async { implicit request =>
-        val headers = commonReadHeaders()
-        val content = new java.util.HashMap().asInstanceOf[java.util.Map[String, Object]]
-        content.putAll(headers)
-        content.putAll(Map("identifier" -> identifier, "mode" -> mode.getOrElse("read"), "fields" -> fields.getOrElse("")).asJava)
-        val readRequest = getRequest(content, headers, "extendedReadContent")
-        setRequestContext(readRequest, version, objectType, schemaName)
-        getResult(ApiId.EXTENDED_READ_CONTENT, contentActor, readRequest, true)
-    }
-
-
 }

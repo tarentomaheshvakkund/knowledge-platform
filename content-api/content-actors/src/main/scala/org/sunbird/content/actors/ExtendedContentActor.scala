@@ -1,7 +1,7 @@
 package org.sunbird.content.actors
 
 import com.datastax.driver.core.querybuilder.QueryBuilder
-import org.apache.commons.collections4.CollectionUtils
+import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.actor.core.BaseActor
@@ -17,6 +17,7 @@ import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.external.store.ExternalStore
 import org.sunbird.graph.nodes.DataNode
+import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 import org.sunbird.util.RequestUtil
@@ -28,7 +29,7 @@ import java.time.{LocalDate, ZoneId, ZoneOffset, ZonedDateTime}
 import java.util
 import javax.inject.Inject
 import scala.collection.JavaConverters._
-import scala.collection.Map
+import scala.collection.{JavaConverters, Map}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
@@ -52,9 +53,14 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   private val copyFields: Set[String] =
     Platform.config.getStringList(ContentConstants.CONTENT_COPY_FIELDS).asScala.toSet
 
+  // Configuration for extended read operations
+  private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
+  private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
+  private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
 
   override def onReceive(request: Request): Future[Response] = {
     request.getOperation match {
+      case "extendedReadContent" => extendedRead(request)
       case "createVersionContent" => createNewVersionOfContent(request)
       case "scheduleRetirement" => scheduleRetirement(request)
       case "isRetirementScheduled" => isRetirementScheduled(request)
@@ -887,5 +893,422 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
     }
   }
 
+  /**
+   * Extended read operation for Learning Pathway that enriches milestones with course hierarchy and assessment details.
+   * Implements Redis caching with key pattern: extended_read_learningpathway_{{identifier}}
+   *
+   * Flow:
+   * 1. Check Redis cache for existing enriched data
+   * 2. If not cached, perform standard content read
+   * 3. Check if content is a Learning Pathway with milestones_v1
+   * 4. Extract course IDs and assessment IDs from all milestones
+   * 5. Fetch course data (with hierarchy) and assessment data in parallel
+   * 6. Merge fetched data back into milestone structure
+   * 7. Cache the enriched response and return
+   *
+   * @param request Request with identifier
+   * @return Future[Response] with enriched milestone data
+   */
+  def extendedRead(request: Request): Future[Response] = {
+    //Extract identifier and build cache key
+    val identifier = request.getRequest.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String]
+    val cacheKey = s"${ContentConstants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX}$identifier"
+    //Check Redis cache for pre-computed enriched data
+    val cachedData = RedisCache.get(cacheKey)
+    if (cachedData != null && cachedData.nonEmpty) {
+      try {
+        val cachedResponse = JsonUtils.deserialize(cachedData, classOf[Response])
+        return Future.successful(cachedResponse)
+      } catch {
+        case e: Exception =>
+          logger.warn(s"[extendedRead] Cache deserialization failed for $identifier", e)
+      }
+    }
+    //Cache miss - perform standard content read
+    read(request).flatMap { response =>
+      //Extract content metadata from response
+      val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+      val contentKey = if (responseSchemaName.isEmpty) ContentConstants.CONTENT else responseSchemaName
+      val contentMetadata = response.getResult.get(contentKey).asInstanceOf[util.Map[String, AnyRef]]
+      //Get course category and handle different enrichment strategies
+      val courseCategory = contentMetadata.getOrDefault(ContentConstants.COURSE_CATEGORY, "").asInstanceOf[String]
+      //Switch based on course category type
+      val enrichmentFuture = if (StringUtils.isBlank(courseCategory)) {
+        //No course category - return as is
+        Future.successful(response)
+      } else {
+        courseCategory.toLowerCase match {
+          //Case 1: Learning Pathway - enrich milestones with course hierarchy and assessments
+          case category if StringUtils.equalsIgnoreCase(category, ContentConstants.LEARNING_PATHWAY) =>
+            if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
+              contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
+              //Extract and parse milestones_v1 (handle both String and List types)
+              val milestonesRaw = contentMetadata.get(ContentConstants.MILESTONES_V1)
+              val milestones: util.List[util.Map[String, AnyRef]] = milestonesRaw match {
+                case s: String =>
+                  JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
+                case list: util.List[_] =>
+                  list.asInstanceOf[util.List[util.Map[String, AnyRef]]]
+                case _ =>
+                  logger.warn(s"[extendedRead] Unexpected milestones_v1 type: $identifier")
+                  new util.ArrayList[util.Map[String, AnyRef]]()
+              }
+              //Enrich milestones by fetching course hierarchy and assessment data
+              enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
+                contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
+                response.getResult.put(contentKey, contentMetadata)
+                response
+              }
+            } else {
+              //Learning Pathway without milestones - return as is
+              Future.successful(response)
+            }
+          //Case 2: Default - Any other course category
+          //Fetch and add hierarchy children to the content metadata
+          case _ =>
+            logger.info(s"[extendedRead] Enriching course category: $courseCategory for identifier: $identifier")
+            fetchCourseWithHierarchy(identifier, request).map { courseDataWithHierarchy =>
+              //Merge hierarchy children into content metadata
+              if (courseDataWithHierarchy.containsKey(ContentConstants.CHILDREN)) {
+                contentMetadata.put(ContentConstants.CHILDREN, courseDataWithHierarchy.get(ContentConstants.CHILDREN))
+              }
+              response.getResult.put(contentKey, contentMetadata)
+              response
+            }
+        }
+      }
+      //Cache the enriched response
+      enrichmentFuture.map { enrichedResponse =>
+        try {
+          val serializedResponse = JsonUtils.serialize(enrichedResponse)
+          RedisCache.set(cacheKey, serializedResponse, extendedContentReadCacheTTL)
+        } catch {
+          case e: Exception =>
+            logger.error(s"[extendedRead] Cache set failed for $identifier", e)
+        }
+        enrichedResponse
+      }
+    }.recover {
+      case e: ClientException =>
+        logger.error(s"[extendedRead] ClientException for $identifier: ${e.getMessage}", e)
+        throw e
+      case e: Exception =>
+        logger.error(s"[extendedRead] Exception for $identifier: ${e.getMessage}", e)
+        throw e
+    }
+  }
 
+  /**
+   * Enriches milestones by fetching course read + hierarchy data and assessment read data.
+   *
+   * Process:
+   * 1. Extract all unique course IDs from all milestones
+   * 2. Extract all unique assessment IDs from all milestones
+   * 3. Fetch course data (with hierarchy children) in parallel for all course IDs
+   * 4. Fetch assessment data in parallel for all assessment IDs
+   * 5. Merge fetched data back into respective milestone objects
+   *
+   * @param milestones List of milestone objects (each may contain courses and assessmentDetail)
+   * @param request    Original request context (used for authentication, version, etc.)
+   * @return Future[List] of enriched milestone objects with full course and assessment data
+   */
+  private def enrichMilestonesWithHierarchy(milestones: util.List[util.Map[String, AnyRef]], request: Request): Future[util.List[util.Map[String, AnyRef]]] = {
+    //Convert Java List to Scala List for easier processing
+    val milestonesList = JavaConverters.asScalaIteratorConverter(milestones.iterator()).asScala.toList
+    //Extract all unique course IDs from all milestones
+    // Each milestone may have a "courses" array with multiple course objects
+    val allCourseIds = milestonesList.flatMap { milestone =>
+      if (milestone.containsKey(ContentConstants.COURSES) && milestone.get(ContentConstants.COURSES) != null) {
+        val courses = milestone.get(ContentConstants.COURSES).asInstanceOf[util.List[util.Map[String, AnyRef]]]
+        JavaConverters.asScalaIteratorConverter(courses.iterator()).asScala
+          .map(_.getOrDefault(ContentConstants.COURSE_ID, "").asInstanceOf[String])
+          .filter(_.nonEmpty)
+          .toList
+      } else {
+        List.empty[String]
+      }
+    }.distinct
+    // Extract all unique assessment IDs from all milestones
+    // Each milestone may have an "assessmentDetail" object with an identifier
+    val allAssessmentIds = milestonesList.flatMap { milestone =>
+      if (milestone.containsKey(ContentConstants.ASSESSMENT_DETAIL) && milestone.get(ContentConstants.ASSESSMENT_DETAIL) != null) {
+        val assessmentDetail = milestone.get(ContentConstants.ASSESSMENT_DETAIL).asInstanceOf[util.Map[String, AnyRef]]
+        val identifier = assessmentDetail.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String]
+        if (identifier.nonEmpty) List(identifier) else List.empty[String]
+      } else {
+        List.empty[String]
+      }
+    }.distinct
+    //Fetch all course data in parallel (includes hierarchy children)
+    val courseDataFuture = Future.sequence(
+      allCourseIds.map { courseId =>
+        fetchCourseWithHierarchy(courseId, request).map(data => courseId -> data)
+      }
+    ).map(_.toMap)
+    //  Fetch all assessment data in parallel
+    val assessmentDataFuture = Future.sequence(
+      allAssessmentIds.map { assessmentId =>
+        fetchContentRead(assessmentId, request).map(data => assessmentId -> data)
+      }
+    ).map(_.toMap)
+    //Wait for both course and assessment data, then merge into milestones
+    for {
+      courseMap <- courseDataFuture
+      assessmentMap <- assessmentDataFuture
+    } yield {
+      //Iterate through each milestone and enrich with fetched data
+      val enrichedList = milestonesList.map { milestone =>
+        val enrichedMilestone = new util.HashMap[String, AnyRef](milestone)
+        //Enrich courses in this milestone
+        if (milestone.containsKey(ContentConstants.COURSES) && milestone.get(ContentConstants.COURSES) != null) {
+          val courses = milestone.get(ContentConstants.COURSES).asInstanceOf[util.List[util.Map[String, AnyRef]]]
+          val enrichedCourses = JavaConverters.asScalaIteratorConverter(courses.iterator()).asScala.map { course =>
+            val courseId = course.getOrDefault(ContentConstants.COURSE_ID, "").asInstanceOf[String]
+            val enrichedCourse = new util.HashMap[String, AnyRef](course)
+            // Merge fetched course data (includes hierarchy children)
+            if (courseId.nonEmpty && courseMap.contains(courseId)) {
+              enrichedCourse.putAll(courseMap(courseId))
+            }
+            enrichedCourse.asInstanceOf[util.Map[String, AnyRef]]
+          }.toList
+          enrichedMilestone.put(ContentConstants.COURSES, JavaConverters.seqAsJavaListConverter(enrichedCourses).asJava)
+        }
+        //Enrich assessment in this milestone
+        if (milestone.containsKey(ContentConstants.ASSESSMENT_DETAIL) && milestone.get(ContentConstants.ASSESSMENT_DETAIL) != null) {
+          val assessmentDetail = milestone.get(ContentConstants.ASSESSMENT_DETAIL).asInstanceOf[util.Map[String, AnyRef]]
+          val assessmentId = assessmentDetail.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String]
+          val enrichedAssessment = new util.HashMap[String, AnyRef](assessmentDetail)
+          // Merge fetched assessment data
+          if (assessmentId.nonEmpty && assessmentMap.contains(assessmentId)) {
+            enrichedAssessment.putAll(assessmentMap(assessmentId))
+          }
+          enrichedMilestone.put(ContentConstants.ASSESSMENT_DETAIL, enrichedAssessment)
+        }
+        enrichedMilestone.asInstanceOf[util.Map[String, AnyRef]]
+      }
+      //Convert enriched Scala list back to Java List and return
+      JavaConverters.seqAsJavaListConverter(enrichedList).asJava
+    }
+  }
+
+  /**
+   * Filters children to only include configured fields (for response optimization).
+   * Uses childrenFields configuration to limit which fields are returned in hierarchy children.
+   *
+   * Purpose: Reduces response payload size by filtering out unnecessary fields from children nodes.
+   *
+   * @param children List of child content objects (may contain many fields)
+   * @return Filtered list with only configured fields from application.conf
+   */
+  private def filterChildrenFields(children: AnyRef): AnyRef = {
+    children match {
+      case list: util.List[_] =>
+        val filteredList = new util.ArrayList[util.Map[String, AnyRef]]()
+        list.asScala.foreach {
+          case child: util.Map[_, _] =>
+            val childMap = child.asInstanceOf[util.Map[String, AnyRef]]
+            val filteredChild = new util.HashMap[String, AnyRef]()
+            // Only include fields that are configured in contentHierarchyFields
+            contentHierarchyFields.foreach { field =>
+              if (childMap.containsKey(field)) {
+                filteredChild.put(field, childMap.get(field))
+              }
+            }
+            filteredList.add(filteredChild)
+          case _ =>
+        }
+        filteredList
+      case _ =>
+        children
+    }
+  }
+
+  /**
+   * Fetches course read data + hierarchy children.
+   * Implements Redis caching with key pattern: extended_read_content_{{courseId}}
+   *
+   * Process:
+   * 1. Check Redis cache for pre-computed course+hierarchy data
+   * 2. If not cached, fetch course metadata from Neo4j (DataNode.read)
+   * 3. Fetch hierarchy children from Cassandra (HierarchyManager.getHierarchy)
+   * 4. Filter children to include only configured fields
+   * 5. Merge course metadata + children
+   * 6. Cache the result and return
+   *
+   * Note: Course data comes from Neo4j, hierarchy structure comes from Cassandra
+   *
+   * @param courseId        Course identifier
+   * @param originalRequest Request context (authentication, version, etc.)
+   * @return Future[Map] with course read data and filtered children from hierarchy
+   */
+  private def fetchCourseWithHierarchy(courseId: String, originalRequest: Request): Future[util.Map[String, AnyRef]] = {
+    //Build cache key and check Redis cache
+    val cacheKey = s"${ContentConstants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX}$courseId"
+    val cachedData = RedisCache.get(cacheKey)
+    if (cachedData != null && cachedData.nonEmpty) {
+      try {
+        val cachedMap = JsonUtils.deserialize(cachedData, classOf[java.util.Map[String, AnyRef]])
+        return Future.successful(cachedMap)
+      } catch {
+        case e: Exception =>
+          logger.warn(s"[fetchCourse] Cache deserialization failed for $courseId", e)
+      }
+    }
+    val readRequest = new Request(originalRequest)
+    readRequest.put(ContentConstants.IDENTIFIER, courseId)
+    readRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
+    val hierarchyRequest = new Request(originalRequest)
+    hierarchyRequest.getRequest.put(ContentConstants.IDENTIFIER, courseId)
+    hierarchyRequest.getRequest.put(ContentConstants.ROOT_ID, courseId)
+    //Fetch course metadata from Neo4j
+    val readFuture = DataNode.read(readRequest).map { node =>
+      val fields = contentEnrichmentFields
+      val version = originalRequest.getContext.getOrDefault(ContentConstants.VERSION, "").asInstanceOf[String]
+      val metadata = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), version)
+      metadata.put(ContentConstants.IDENTIFIER, node.getIdentifier.replace(".img", ""))
+      metadata
+    }
+    //Fetch hierarchy structure from Cassandra (hierarchy_store.content_hierarchy)
+    val hierarchyFuture = HierarchyManager.getHierarchy(hierarchyRequest).map { hierarchyResponse =>
+      if (hierarchyResponse.getResponseCode == ResponseCode.OK) {
+        val responseSchemaName: String = originalRequest.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+        val contentKey = if (responseSchemaName.isEmpty) ContentConstants.CONTENT else responseSchemaName
+        val hierarchyData = hierarchyResponse.getResult.get(contentKey).asInstanceOf[util.Map[String, AnyRef]]
+        // Extract children array from hierarchy response
+        if (hierarchyData != null && hierarchyData.containsKey(ContentConstants.CHILDREN)) {
+          Some(hierarchyData.get(ContentConstants.CHILDREN))
+        } else {
+          None
+        }
+      } else {
+        logger.warn(s"[fetchCourse] Hierarchy not found in Cassandra for $courseId: ${hierarchyResponse.getResponseCode} - content may not be published or have no hierarchy")
+        None
+      }
+    }.recover {
+      case e: Exception =>
+        logger.info(s"[fetchCourse] Hierarchy fetch exception for $courseId (content may not have hierarchy): ${e.getMessage}")
+        None
+    }
+    //Wait for both futures and merge results
+    for {
+      courseData <- readFuture
+      children <- hierarchyFuture
+    } yield {
+      children.foreach { c =>
+        val filteredChildren = filterChildrenFields(c)
+        courseData.put(ContentConstants.CHILDREN, filteredChildren)
+      }
+      try {
+        val serializedData = JsonUtils.serialize(courseData)
+        RedisCache.set(cacheKey, serializedData, extendedContentReadCacheTTL)
+      } catch {
+        case e: Exception =>
+          logger.error(s"[fetchCourse] Cache set failed for $courseId", e)
+      }
+      courseData
+    }
+  }.recover {
+    case e: Exception =>
+      logger.error(s"[fetchCourse] Failed to fetch $courseId", e)
+      val errorMap = new util.HashMap[String, AnyRef]()
+      errorMap.put(ContentConstants.IDENTIFIER, courseId)
+      errorMap.put(ContentConstants.ERROR, s"Failed to fetch: ${e.getMessage}")
+      errorMap
+  }
+
+  /**
+   * Fetches content read data for an assessment.
+   * Implements Redis caching with key pattern: extended_read_assessment_{{assessmentId}}
+   *
+   * Process:
+   * 1. Check Redis cache for pre-computed assessment data
+   * 2. If not cached, fetch assessment metadata from Neo4j (DataNode.read)
+   * 3. Serialize node to include only configured enrichment fields
+   * 4. Cache the result and return
+   *
+   * Note: Unlike courses, assessments don't have hierarchy children, so we only fetch metadata from Neo4j.
+   * Assessments are leaf nodes in the content hierarchy and don't require Cassandra hierarchy lookup.
+   *
+   * @param assessmentId    Assessment identifier
+   * @param originalRequest Request context (authentication, version, etc.)
+   * @return Future[Map] with assessment metadata (no children)
+   */
+  private def fetchContentRead(assessmentId: String, originalRequest: Request): Future[util.Map[String, AnyRef]] = {
+    // Build cache key and check Redis cache
+    val cacheKey = s"${ContentConstants.EXTENDED_READ_ASSESSMENT_CACHE_KEY_PREFIX}$assessmentId"
+    val cachedData = RedisCache.get(cacheKey)
+    if (cachedData != null && cachedData.nonEmpty) {
+      try {
+        val cachedMap = JsonUtils.deserialize(cachedData, classOf[java.util.Map[String, AnyRef]])
+        return Future.successful(cachedMap)
+      } catch {
+        case e: Exception =>
+          logger.warn(s"[fetchAssessment] Cache deserialization failed for $assessmentId", e)
+      }
+    }
+    val readRequest = new Request(originalRequest)
+    readRequest.put(ContentConstants.IDENTIFIER, assessmentId)
+    readRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
+    // Fetch assessment metadata from Neo4j graph database
+    DataNode.read(readRequest).map { node =>
+      val fields = contentEnrichmentFields
+      val version = originalRequest.getContext.getOrDefault(ContentConstants.VERSION, "").asInstanceOf[String]
+      val metadata = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), version)
+      metadata.put(ContentConstants.IDENTIFIER, node.getIdentifier.replace(".img", ""))
+      try {
+        val serializedData = JsonUtils.serialize(metadata)
+        RedisCache.set(cacheKey, serializedData, extendedContentReadCacheTTL)
+      } catch {
+        case e: Exception =>
+          logger.error(s"[fetchAssessment] Cache set failed for $assessmentId", e)
+      }
+      metadata
+    }.recover {
+      case e: Exception =>
+        logger.error(s"[fetchAssessment] Failed to fetch $assessmentId", e)
+        val errorMap = new util.HashMap[String, AnyRef]()
+        errorMap.put(ContentConstants.IDENTIFIER, assessmentId)
+        errorMap.put(ContentConstants.ERROR, s"Failed to fetch: ${e.getMessage}")
+        errorMap
+    }
+  }
+
+  def read(request: Request): Future[Response] = {
+    val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+    val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+    request.getRequest.put("fields", fields)
+    DataNode.read(request).map(node => {
+      val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
+      metadata.put("identifier", node.getIdentifier.replace(".img", ""))
+      if (StringUtils.equalsIgnoreCase(metadata.get("visibility").asInstanceOf[String],"Private")) {
+        throw new ClientException("ERR_ACCESS_DENIED", "content visibility is private, hence access denied")
+      }
+      var sa = metadata.get("secureSettings")
+      var securityAttribute : util.Map[String, AnyRef] = new util.HashMap[String, AnyRef]
+      if(sa.isInstanceOf[String]) {
+        securityAttribute = JsonUtils.deserialize(sa.asInstanceOf[String], classOf[java.util.Map[String, AnyRef]])
+        metadata.put("secureSettings", securityAttribute)
+      } else if (sa.isInstanceOf[util.Map[String, AnyRef]]) {
+        securityAttribute = metadata.getOrDefault("secureSettings", new util.HashMap[String, AnyRef]).asInstanceOf[util.Map[String, AnyRef]]
+      }
+      //var securityAttribute : util.Map[String, AnyRef] = metadata.getOrDefault("secureSettings", new util.HashMap[String, AnyRef]).asInstanceOf[util.Map[String, AnyRef]]
+      if (MapUtils.isNotEmpty(securityAttribute)) {
+        var orgList : util.ArrayList[String] = securityAttribute.getOrDefault("organisation", new util.ArrayList[String]).asInstanceOf[util.ArrayList[String]]
+        if (!CollectionUtils.isEmpty(orgList)) {
+          //Content should be read by unique org users only.
+          var userChannelId : String = request.getRequest.getOrDefault("x-user-channel-id", "").asInstanceOf[String]
+          if (!orgList.contains(userChannelId)) {
+            throw new ClientException("ERR_ACCESS_DENIED", "User is not allowed to read this content.")
+          }
+        }
+      }
+      val response: Response = ResponseHandler.OK
+      if (responseSchemaName.isEmpty) {
+        response.put("content", metadata)
+      } else {
+        response.put(responseSchemaName, metadata)
+      }
+      response
+    })
+  }
 }
