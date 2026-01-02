@@ -2,6 +2,8 @@ package org.sunbird.content.actors
 
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
+import com.mashape.unirest.http.Unirest
+import org.apache.commons.collections4.CollectionUtils
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.actor.core.BaseActor
@@ -179,7 +181,25 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
         put("objectType", "Collection")
         put("schemaName", "collection")
       }})
+      val id = oldMeta.get(ContentConstants.IDENTIFIER)
       create(createReq).flatMap { createResp =>
+        try {
+          if (StringUtils.isNotBlank(createdBy)) {
+            NotificationManager.sendNotification(
+              "PUBLISHED_NEW_VERSION",
+              "ALERT",
+              List(createdBy),
+              oldMeta.get("name").toString,
+              Map[String, Any]("id" -> id)
+            )
+            logger.info(s"[RETIRE-NOTIFY][SUCCESS] contentId=$id, userId=$createdBy")
+          } else {
+            logger.warn(s"[RETIRE-NOTIFY][SKIPPED] No userIdRaised found for contentId=$id")
+          }
+        } catch {
+          case e: Exception =>
+            logger.error(s"[RETIRE-NOTIFY][FAILED] contentId=$id", e)
+        }
         val newCourseId = createResp.get(ContentConstants.IDENTIFIER).asInstanceOf[String]
         copyAccessSettingsForNewCourse(sourceCollectionId, newCourseId)
           .map { _ =>
@@ -620,6 +640,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
           "ERR_METADATA_ISSUE",
           s"Content metadata error, status is blank for identifier: ${node.getIdentifier}"
         )
+      var notificationType = "RETIRED"
       action match {
         case ContentConstants.APPROVE =>
           request.getRequest.put(
@@ -653,6 +674,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
             ContentConstants.CONTENT_RETIREMENT_STS,
             ContentConstants.REJECTED
           )
+          notificationType = "RETIRED_REJECTED"
       }
       request.setContext(new java.util.HashMap[String, AnyRef]() {{
         put("graph_id", "domain")
@@ -663,6 +685,29 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       request.getRequest.put("versionKey", metadata.get("versionKey"))
       RequestUtil.restrictProperties(request)
       request.getContext.put(ContentConstants.IDENTIFIER, id)
+      try {
+        val requestedBy =
+          Option(retirementResult.get(ContentConstants.USER_ID_RAISED_FIELD))
+            .map(_.toString)
+            .getOrElse("")
+
+        if (StringUtils.isNotBlank(requestedBy)) {
+          NotificationManager.sendNotification(
+            notificationType,
+            "ALERT",
+            List(requestedBy),
+            node.getMetadata.get("name").toString,
+            Map[String, Any]("id" -> id)
+          )
+          logger.info(s"[RETIRE-NOTIFY][SUCCESS] contentId=$id, userId=$requestedBy")
+        } else {
+          logger.warn(s"[RETIRE-NOTIFY][SKIPPED] No userIdRaised found for contentId=$id")
+        }
+      } catch {
+        case e: Exception =>
+          logger.error(s"[RETIRE-NOTIFY][FAILED] contentId=$id", e)
+      }
+
       systemUpdate(request).map { updatedResp =>
         logger.info(
           s"[RETIRE-DECIDE][CONTENT-UPDATE] action=$action, contentId=$id"
