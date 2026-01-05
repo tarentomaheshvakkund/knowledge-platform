@@ -1,7 +1,5 @@
 package org.sunbird.content.actors
 
-import com.datastax.driver.core.querybuilder.QueryBuilder
-import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture, MoreExecutors}
 import org.apache.commons.collections4.{CollectionUtils, MapUtils}
 import org.apache.commons.io.FilenameUtils
 import org.apache.commons.lang3.StringUtils
@@ -9,7 +7,6 @@ import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.`object`.importer.{ImportConfig, ImportManager}
 import org.sunbird.actor.core.BaseActor
 import org.sunbird.cache.impl.RedisCache
-import org.sunbird.cassandra.CassandraConnector
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResponseCode}
@@ -29,14 +26,13 @@ import org.sunbird.util.RequestUtil
 
 import java.io.File
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import java.time.{ZoneId, ZonedDateTime}
 import java.util
 import java.util.concurrent.CompletionException
 import javax.inject.Inject
 import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, Map}
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{ExecutionContext, Future}
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -897,4 +893,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			ResponseHandler.OK().putAll(resultMap.asJava)
 		}
 	}
+
+
 }
