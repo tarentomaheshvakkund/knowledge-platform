@@ -232,7 +232,7 @@ object ExtendedRetireManager {
         case ResponseCode.OK =>
           throw new ClientException(
             ContentConstants.ERR_CONTENT_HAS_ACTIVE_PLAN,
-            "Content has cbPlan mappings and cannot be retired."
+            "This course is part of a Program/Training plan and cannot be retired or versioned."
           )
         case ResponseCode.RESOURCE_NOT_FOUND =>
           ()
