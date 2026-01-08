@@ -58,6 +58,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
   private val enrichChildrenCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES).asScala.toSet
+  private val assessmentReadFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ASSESSMENT_READ_FIELDS).asScala.toList.asJava
 
   override def onReceive(request: Request): Future[Response] = {
     request.getOperation match {
@@ -1054,10 +1055,10 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
         fetchCourseWithHierarchy(courseId, request).map(data => courseId -> data)
       }
     ).map(_.toMap)
-    //  Fetch all assessment data in parallel
+    //  Fetch all assessment data in parallel using assessmentReadFields
     val assessmentDataFuture = Future.sequence(
       allAssessmentIds.map { assessmentId =>
-        fetchContentRead(assessmentId, request).map(data => assessmentId -> data)
+        fetchAssessmentRead(assessmentId, request).map(data => assessmentId -> data)
       }
     ).map(_.toMap)
     //Wait for both course and assessment data, then merge into milestones
@@ -1354,13 +1355,14 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   /**
    * Enriches Learning Pathway content by enriching milestones with course hierarchy and assessments.
+   * Also enriches preliminary assessment if present.
    *
    * @param identifier Content identifier
    * @param contentMetadata Content metadata map
    * @param response Original response object
    * @param contentKey Key for content in response
    * @param request Original request context
-   * @return Future[Response] with enriched milestones
+   * @return Future[Response] with enriched milestones and preliminary assessment
    */
   private def enrichLearningPathwayContent(
                                            identifier: String,
@@ -1369,17 +1371,25 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
                                            contentKey: String,
                                            request: Request
                                          ): Future[Response] = {
-    if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
+    val milestonesFuture = if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
       contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
       val milestones = parseMilestones(identifier, contentMetadata.get(ContentConstants.MILESTONES_V1))
       enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
         contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
-        response.getResult.put(contentKey, contentMetadata)
-        response
       }
     } else {
       logger.info(s"[enrichLearningPathwayContent] Learning Pathway has no milestones for identifier: $identifier")
-      Future.successful(response)
+      Future.successful(())
+    }
+    // Enrich preliminary assessment if present
+    val preliminaryAssessmentFuture = enrichPreliminaryAssessment(identifier, contentMetadata, request)
+    // Wait for both enrichments to complete
+    for {
+      _ <- milestonesFuture
+      _ <- preliminaryAssessmentFuture
+    } yield {
+      response.getResult.put(contentKey, contentMetadata)
+      response
     }
   }
 
@@ -1425,6 +1435,87 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       case _ =>
         logger.warn(s"[parseMilestones] Unexpected milestones_v1 type for identifier: $identifier")
         new util.ArrayList[util.Map[String, AnyRef]]()
+    }
+  }
+
+    /**
+   * Enriches preliminary assessment if present in content metadata.
+   * Fetches assessment details and adds as preliminaryAssessmentDetail while keeping preliminaryAssessment.
+   *
+   * @param identifier Content identifier
+   * @param contentMetadata Content metadata map (modified in place)
+   * @param request Original request context
+   * @return Future[Unit]
+   */
+  private def enrichPreliminaryAssessment(
+                                          identifier: String,
+                                          contentMetadata: util.Map[String, AnyRef],
+                                          request: Request
+                                        ): Future[Unit] = {
+    if (contentMetadata.containsKey(ContentConstants.PRELIMINARY_ASSESSMENT) &&
+      contentMetadata.get(ContentConstants.PRELIMINARY_ASSESSMENT) != null) {
+      val preliminaryAssessmentId = contentMetadata.get(ContentConstants.PRELIMINARY_ASSESSMENT).asInstanceOf[String]
+      if (StringUtils.isNotBlank(preliminaryAssessmentId)) {
+        logger.info(s"[enrichPreliminaryAssessment] Fetching preliminary assessment: $preliminaryAssessmentId for content: $identifier")
+        fetchAssessmentRead(preliminaryAssessmentId, request).map { assessmentData =>
+          contentMetadata.put(ContentConstants.PRELIMINARY_ASSESSMENT_DETAIL, assessmentData)
+          logger.info(s"[enrichPreliminaryAssessment] Added preliminaryAssessmentDetail for content: $identifier")
+        }.recover {
+          case e: Exception =>
+            logger.error(s"[enrichPreliminaryAssessment] Failed to fetch preliminary assessment: $preliminaryAssessmentId for content: $identifier", e)
+        }
+      } else {
+        logger.info(s"[enrichPreliminaryAssessment] preliminaryAssessment is blank for content: $identifier")
+        Future.successful(())
+      }
+    } else {
+      Future.successful(())
+    }
+  }
+
+  /**
+   * Fetches assessment read data using configured assessment read fields.
+   *
+   * @param assessmentId Assessment identifier
+   * @param originalRequest Request context
+   * @return Future[Map] with assessment metadata
+   */
+  private def fetchAssessmentRead(assessmentId: String, originalRequest: Request): Future[util.Map[String, AnyRef]] = {
+    val cacheKey = s"${ContentConstants.EXTENDED_READ_ASSESSMENT_CACHE_KEY_PREFIX}$assessmentId"
+    val cachedData = RedisCache.get(cacheKey)
+    if (cachedData != null && cachedData.nonEmpty) {
+      try {
+        val cachedMap = JsonUtils.deserialize(cachedData, classOf[java.util.Map[String, AnyRef]])
+        return Future.successful(cachedMap)
+      } catch {
+        case e: Exception =>
+          logger.warn(s"[fetchAssessmentRead] Cache deserialization failed for $assessmentId", e)
+      }
+    }
+    val readRequest = new Request(originalRequest)
+    readRequest.put(ContentConstants.IDENTIFIER, assessmentId)
+    readRequest.put(ContentConstants.FIELDS, assessmentReadFields)
+    DataNode.read(readRequest).map { node =>
+      val fields = assessmentReadFields
+      val version = originalRequest.getContext.getOrDefault(ContentConstants.VERSION, "").asInstanceOf[String]
+      val metadata = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), version)
+      metadata.put(ContentConstants.IDENTIFIER, node.getIdentifier.replace(".img", ""))
+      
+      try {
+        val serializedData = JsonUtils.serialize(metadata)
+        RedisCache.set(cacheKey, serializedData, extendedContentReadCacheTTL)
+      } catch {
+        case e: Exception =>
+          logger.error(s"[fetchAssessmentRead] Cache set failed for $assessmentId", e)
+      }
+      metadata
+    }.recover {
+      case e: Exception =>
+        logger.error(s"[fetchAssessmentRead] Failed to fetch $assessmentId", e)
+        val errorMap = new util.HashMap[String, AnyRef]()
+        errorMap.put(ContentConstants.IDENTIFIER, assessmentId)
+        errorMap.put(ContentConstants.ERROR, s"Failed to fetch: ${e.getMessage}")
+        errorMap
     }
   }
 }
