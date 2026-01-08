@@ -57,7 +57,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
-  private val skipChildrenEnrichmentCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_SKIP_CHILDREN_CATEGORIES).asScala.toSet
+  private val enrichChildrenCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES).asScala.toSet
 
   override def onReceive(request: Request): Future[Response] = {
     request.getOperation match {
@@ -974,56 +974,17 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
       val contentKey = if (responseSchemaName.isEmpty) ContentConstants.CONTENT else responseSchemaName
       val contentMetadata = response.getResult.get(contentKey).asInstanceOf[util.Map[String, AnyRef]]
-      //Get course category and handle different enrichment strategies
+      //Get course category and check if enrichment is needed
       val courseCategory = contentMetadata.getOrDefault(ContentConstants.COURSE_CATEGORY, "").asInstanceOf[String]
-      //Switch based on course category type
-      val enrichmentFuture = if (StringUtils.isBlank(courseCategory)) {
-        //No course category - return as is
+      //Check if this course category should have children enrichment
+      val enrichmentFuture = if (enrichChildrenCategories.exists(enrichCat => StringUtils.equalsIgnoreCase(enrichCat, courseCategory))) {
+        //Category is in enrichment list - perform enrichment
+        logger.info(s"[extendedRead] Enriching children for category: $courseCategory, identifier: $identifier")
+        enrichContentChildren(identifier, courseCategory, contentMetadata, response, contentKey, request)
+      }else{
+        //Category not in enrichment list - return content as is
+        logger.info(s"[extendedRead] Skipping children enrichment for category: $courseCategory, identifier: $identifier")
         Future.successful(response)
-      } else {
-        courseCategory.toLowerCase match {
-          //Case 1: Learning Pathway - enrich milestones with course hierarchy and assessments
-          case category if StringUtils.equalsIgnoreCase(category, ContentConstants.LEARNING_PATHWAY) =>
-            if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
-              contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
-              //Extract and parse milestones_v1 (handle both String and List types)
-              val milestonesRaw = contentMetadata.get(ContentConstants.MILESTONES_V1)
-              val milestones: util.List[util.Map[String, AnyRef]] = milestonesRaw match {
-                case s: String =>
-                  JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
-                case list: util.List[_] =>
-                  list.asInstanceOf[util.List[util.Map[String, AnyRef]]]
-                case _ =>
-                  logger.warn(s"[extendedRead] Unexpected milestones_v1 type: $identifier")
-                  new util.ArrayList[util.Map[String, AnyRef]]()
-              }
-              //Enrich milestones by fetching course hierarchy and assessment data
-              enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
-                contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
-                response.getResult.put(contentKey, contentMetadata)
-                response
-              }
-            } else {
-              //Learning Pathway without milestones - return as is
-              Future.successful(response)
-            }
-          //Case 2: Check if this category should skip children enrichment
-          case category if skipChildrenEnrichmentCategories.exists(skipCat => 
-            StringUtils.equalsIgnoreCase(skipCat, courseCategory)) =>
-            logger.info(s"[extendedRead] Skipping children enrichment for category: $courseCategory, identifier: $identifier")
-            Future.successful(response)
-          //Case 3: Default - Fetch and add hierarchy children to the content metadata
-          case _ =>
-            logger.info(s"[extendedRead] Enriching course category: $courseCategory for identifier: $identifier")
-            fetchCourseWithHierarchy(identifier, request).map { courseDataWithHierarchy =>
-              //Merge hierarchy children into content metadata
-              if (courseDataWithHierarchy.containsKey(ContentConstants.CHILDREN)) {
-                contentMetadata.put(ContentConstants.CHILDREN, courseDataWithHierarchy.get(ContentConstants.CHILDREN))
-              }
-              response.getResult.put(contentKey, contentMetadata)
-              response
-            }
-        }
       }
       //Cache the enriched response
       enrichmentFuture.map { enrichedResponse =>
@@ -1358,5 +1319,112 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       }
       response
     })
+  }
+
+  /**
+   * Enriches content children based on course category type.
+   *
+   * Strategy:
+   * - Learning Pathway: Enriches milestones with course hierarchy and assessments
+   * - Other categories: Fetches and adds hierarchy children to content metadata
+   *
+   * @param identifier Content identifier
+   * @param courseCategory Course category type
+   * @param contentMetadata Content metadata map
+   * @param response Original response object
+   * @param contentKey Key for content in response (either "content" or custom schema name)
+   * @param request Original request context
+   * @return Future[Response] with enriched content
+   */
+  private def enrichContentChildren(
+                                     identifier: String,
+                                     courseCategory: String,
+                                     contentMetadata: util.Map[String, AnyRef],
+                                     response: Response,
+                                     contentKey: String,
+                                     request: Request
+                                   ): Future[Response] = {
+    courseCategory.toLowerCase match {
+      case category if StringUtils.equalsIgnoreCase(category, ContentConstants.LEARNING_PATHWAY.toLowerCase) =>
+        enrichLearningPathwayContent(identifier, contentMetadata, response, contentKey, request)
+      case _ =>
+        enrichNormalContent(identifier, contentMetadata, response, contentKey, request)
+    }
+  }
+
+  /**
+   * Enriches Learning Pathway content by enriching milestones with course hierarchy and assessments.
+   *
+   * @param identifier Content identifier
+   * @param contentMetadata Content metadata map
+   * @param response Original response object
+   * @param contentKey Key for content in response
+   * @param request Original request context
+   * @return Future[Response] with enriched milestones
+   */
+  private def enrichLearningPathwayContent(
+                                           identifier: String,
+                                           contentMetadata: util.Map[String, AnyRef],
+                                           response: Response,
+                                           contentKey: String,
+                                           request: Request
+                                         ): Future[Response] = {
+    if (contentMetadata.containsKey(ContentConstants.MILESTONES_V1) &&
+      contentMetadata.get(ContentConstants.MILESTONES_V1) != null) {
+      val milestones = parseMilestones(identifier, contentMetadata.get(ContentConstants.MILESTONES_V1))
+      enrichMilestonesWithHierarchy(milestones, request).map { enrichedMilestones =>
+        contentMetadata.put(ContentConstants.MILESTONES_V1, enrichedMilestones)
+        response.getResult.put(contentKey, contentMetadata)
+        response
+      }
+    } else {
+      logger.info(s"[enrichLearningPathwayContent] Learning Pathway has no milestones for identifier: $identifier")
+      Future.successful(response)
+    }
+  }
+
+  /**
+   * Enriches normal content (Course, Program, etc.) by fetching and adding hierarchy children.
+   *
+   * @param identifier Content identifier
+   * @param contentMetadata Content metadata map
+   * @param response Original response object
+   * @param contentKey Key for content in response
+   * @param request Original request context
+   * @return Future[Response] with hierarchy children
+   */
+  private def enrichNormalContent(
+                                  identifier: String,
+                                  contentMetadata: util.Map[String, AnyRef],
+                                  response: Response,
+                                  contentKey: String,
+                                  request: Request
+                                ): Future[Response] = {
+    fetchCourseWithHierarchy(identifier, request).map { courseDataWithHierarchy =>
+      if (courseDataWithHierarchy.containsKey(ContentConstants.CHILDREN)) {
+        contentMetadata.put(ContentConstants.CHILDREN, courseDataWithHierarchy.get(ContentConstants.CHILDREN))
+      }
+      response.getResult.put(contentKey, contentMetadata)
+      response
+    }
+  }
+
+  /**
+   * Parses milestones_v1 field which can be either a JSON string or a List object.
+   *
+   * @param identifier Content identifier (for logging)
+   * @param milestonesRaw Raw milestones data (String or List)
+   * @return Parsed list of milestone maps
+   */
+  private def parseMilestones(identifier: String, milestonesRaw: AnyRef): util.List[util.Map[String, AnyRef]] = {
+    milestonesRaw match {
+      case s: String =>
+        JsonUtils.deserialize(s, classOf[java.util.List[java.util.Map[String, AnyRef]]])
+      case list: util.List[_] =>
+        list.asInstanceOf[util.List[util.Map[String, AnyRef]]]
+      case _ =>
+        logger.warn(s"[parseMilestones] Unexpected milestones_v1 type for identifier: $identifier")
+        new util.ArrayList[util.Map[String, AnyRef]]()
+    }
   }
 }

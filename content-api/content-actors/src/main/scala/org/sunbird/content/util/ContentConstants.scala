@@ -183,7 +183,7 @@ object ContentConstants {
     val EXTENDED_CONTENT_ENRICHMENT_FIELDS = "extended.content.enrichment.fields"
     val EXTENDED_CONTENT_READ_CACHE_TTL = "extendted.content.read.cache.ttl"
     val EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS = "extended.content.hierarchy.read.children.nodes.fields"
-    val EXTENDED_CONTENT_SKIP_CHILDREN_CATEGORIES = "extended.content.skip.children.enrichment.categories"
+    val EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES = "extended.content.enrich.children.categories"
     val EXTENDED_READ_LEARNINGPATHWAY_CACHE_KEY_PREFIX = "extended_read_learningpathway_"
     val EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX = "extended_read_content_"
     val EXTENDED_READ_ASSESSMENT_CACHE_KEY_PREFIX = "extended_read_assessment_"
