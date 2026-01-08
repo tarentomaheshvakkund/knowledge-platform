@@ -57,6 +57,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
+  private val skipChildrenEnrichmentCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_SKIP_CHILDREN_CATEGORIES).asScala.toSet
 
   override def onReceive(request: Request): Future[Response] = {
     request.getOperation match {
@@ -1006,8 +1007,12 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
               //Learning Pathway without milestones - return as is
               Future.successful(response)
             }
-          //Case 2: Default - Any other course category
-          //Fetch and add hierarchy children to the content metadata
+          //Case 2: Check if this category should skip children enrichment
+          case category if skipChildrenEnrichmentCategories.exists(skipCat => 
+            StringUtils.equalsIgnoreCase(skipCat, courseCategory)) =>
+            logger.info(s"[extendedRead] Skipping children enrichment for category: $courseCategory, identifier: $identifier")
+            Future.successful(response)
+          //Case 3: Default - Fetch and add hierarchy children to the content metadata
           case _ =>
             logger.info(s"[extendedRead] Enriching course category: $courseCategory for identifier: $identifier")
             fetchCourseWithHierarchy(identifier, request).map { courseDataWithHierarchy =>
