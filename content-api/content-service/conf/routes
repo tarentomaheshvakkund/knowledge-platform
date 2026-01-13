@@ -29,7 +29,6 @@ PATCH    /content/v3/dialcode/release/:identifier controllers.v3.ContentControll
 POST     /content/v3/reject/:identifier           controllers.v4.ContentController.reviewReject(identifier:String)
 POST     /content/v3/unlisted/publish/:identifier  controllers.v3.ContentController.publishUnlisted(identifier:String)
 
-
 # Collection APIs
 PATCH     /content/v3/hierarchy/add         controllers.v3.ContentController.addHierarchy
 DELETE    /content/v3/hierarchy/remove      controllers.v3.ContentController.removeHierarchy
@@ -109,7 +108,7 @@ POST     /content/v1/retirement/schedule           controllers.v4.ExtendedConten
 GET     /content/v1/retirement/validate/:identifier controllers.v4.ExtendedContentController.isRetirementScheduled(identifier:String)
 POST   /content/v1/retirement/request/decide       controllers.v4.ExtendedContentController.decideRetirementRequest
 POST   /content/v1/retirement/status               controllers.v4.ExtendedContentController.getRetirementStatus
-
+GET       /content/v1/extended/read/:identifier    controllers.v4.ExtendedContentController.extendedRead(identifier:String, mode:Option[String], fields:Option[String])
 # App v4 APIs
 POST      /app/v4/register                          controllers.v4.AppController.register
 PATCH     /app/v4/update/:identifier                controllers.v4.AppController.update(identifier:String)

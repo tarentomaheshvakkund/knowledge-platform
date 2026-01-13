@@ -331,6 +331,4 @@ class ContentController @Inject()(@Named(ActorNames.CONTENT_ACTOR) contentActor:
             contentRequest
         )
     }
-
-
 }
