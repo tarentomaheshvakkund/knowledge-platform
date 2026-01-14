@@ -1051,7 +1051,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       if (milestone.containsKey(ContentConstants.COURSES) && milestone.get(ContentConstants.COURSES) != null) {
         val courses = milestone.get(ContentConstants.COURSES).asInstanceOf[util.List[util.Map[String, AnyRef]]]
         JavaConverters.asScalaIteratorConverter(courses.iterator()).asScala
-          .map(_.getOrDefault(ContentConstants.COURSE_ID, "").asInstanceOf[String])
+          .map(_.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String])
           .filter(_.nonEmpty)
           .toList
       } else {
@@ -1093,7 +1093,8 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
         if (milestone.containsKey(ContentConstants.COURSES) && milestone.get(ContentConstants.COURSES) != null) {
           val courses = milestone.get(ContentConstants.COURSES).asInstanceOf[util.List[util.Map[String, AnyRef]]]
           val enrichedCourses = JavaConverters.asScalaIteratorConverter(courses.iterator()).asScala.map { course =>
-            val courseId = course.getOrDefault(ContentConstants.COURSE_ID, "").asInstanceOf[String]
+            // Use "identifier" field for course ID (new milestone format)
+            val courseId = course.getOrDefault(ContentConstants.IDENTIFIER, "").asInstanceOf[String]
             val enrichedCourse = new util.HashMap[String, AnyRef](course)
             // Merge fetched course data (includes hierarchy children)
             if (courseId.nonEmpty && courseMap.contains(courseId)) {
