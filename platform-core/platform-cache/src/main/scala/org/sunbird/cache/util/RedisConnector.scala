@@ -8,12 +8,11 @@ import redis.clients.jedis.{Jedis, JedisPool, JedisPoolConfig}
  */
 trait RedisConnector {
 
-	private val HOST: String = Platform.getString("redis.host", "localhost")
-	private val PORT: Int = Platform.getInteger("redis.port", 6379)
-	private val MAX_CONNECTIONS: Int = Platform.getInteger("redis.maxConnections", 128)
-	private val INDEX: Int = Platform.getInteger("redis.dbIndex", 0)
-	private val TIMEOUT: Int = Platform.getInteger("redis.connection.timeout", 10000)
-	private val jedisPool: JedisPool = new JedisPool(getConfig(), HOST, PORT, TIMEOUT)
+	private val HOST = Platform.getString("redis.host", "localhost")
+	private val PORT = Platform.getInteger("redis.port", 6379)
+	private val MAX_CONNECTIONS = Platform.getInteger("redis.maxConnections", 128)
+	private val INDEX = Platform.getInteger("redis.dbIndex", 0)
+	private val jedisPool: JedisPool = new JedisPool(getConfig(), HOST, PORT)
 
 	/**
 	 * This Method Returns a connection object from connection pool.
