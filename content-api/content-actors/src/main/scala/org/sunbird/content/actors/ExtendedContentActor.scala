@@ -1025,6 +1025,9 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       case e: Exception =>
         logger.error(s"[extendedRead] Exception for $identifier: ${e.getMessage}", e)
         throw e
+      case e: Throwable =>
+        logger.error(s"[extendedRead] Final recover for identifier=$identifier", e)
+        throw e
     }
   }
 
