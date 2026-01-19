@@ -599,14 +599,16 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
             s"Invalid action for retirement decision: $action"
           )
       }
+    val now = new java.util.Date()
+    val cassandraApprovedDate: CassandraLocalDate =
+      CassandraLocalDate.fromMillisSinceEpoch(now.getTime)
     update
       .`with`(QueryBuilder.set(ContentConstants.APPROVED, java.lang.Boolean.TRUE))
       .and(QueryBuilder.set(ContentConstants.APPROVED_BY_RQST, approvedBy))
       .and(QueryBuilder.set(ContentConstants.APPROVED_AT, new java.util.Date()))
       .and(QueryBuilder.set(ContentConstants.STATUS, statusValue))
       .and(QueryBuilder.set(ContentConstants.APPROVED_COMMENT, action))
-      .and(QueryBuilder.set(ContentConstants.LAST_ENROLLMENT_DATE_RQST, result.get(ContentConstants.LAST_ENROLLMENT_DATE_RQST)))
-      .and(QueryBuilder.set(ContentConstants.RETIREMENT_DATE_RQST, result.get(ContentConstants.RETIREMENT_DATE_RQST)))
+      .and(QueryBuilder.set(ContentConstants.APPROVED_DATE, cassandraApprovedDate))
 
     CassandraConnector.getSession
       .executeAsync(update)
