@@ -58,6 +58,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   // Configuration for extended read operations
   private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
+  private val childrenContentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CHILDREN_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
   private val enrichChildrenCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES).asScala.toSet
   private val assessmentReadFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ASSESSMENT_READ_FIELDS).asScala.toList.asJava
@@ -1193,13 +1194,13 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
     }
     val readRequest = new Request(originalRequest)
     readRequest.put(ContentConstants.IDENTIFIER, courseId)
-    readRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
+    readRequest.put(ContentConstants.FIELDS, childrenContentEnrichmentFields)
     val hierarchyRequest = new Request(originalRequest)
     hierarchyRequest.getRequest.put(ContentConstants.IDENTIFIER, courseId)
     hierarchyRequest.getRequest.put(ContentConstants.ROOT_ID, courseId)
     //Fetch course metadata from Neo4j
     val readFuture = DataNode.read(readRequest).map { node =>
-      val fields = contentEnrichmentFields
+      val fields = childrenContentEnrichmentFields
       val version = originalRequest.getContext.getOrDefault(ContentConstants.VERSION, "").asInstanceOf[String]
       val metadata = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), version)
       metadata.put(ContentConstants.IDENTIFIER, node.getIdentifier.replace(".img", ""))
