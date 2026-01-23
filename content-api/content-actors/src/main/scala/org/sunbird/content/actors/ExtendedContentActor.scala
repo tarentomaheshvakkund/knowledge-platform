@@ -991,6 +991,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
           logger.warn(s"[extendedRead] Cache deserialization failed for $identifier", e)
       }
     }
+    request.getRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
     //Cache miss - perform standard content read
     read(request).flatMap { response =>
       //Extract content metadata from response
