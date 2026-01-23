@@ -181,6 +181,7 @@ object ContentConstants {
     val CONTENT_COPY_FIELDS = "content.copy.fields"
     val ENRICHMENT_FIELDS = "content.enrichment.fields"
     val EXTENDED_CONTENT_ENRICHMENT_FIELDS = "extended.content.enrichment.fields"
+    val EXTENDED_CHILDREN_CONTENT_ENRICHMENT_FIELDS = "extended.children.content.enrichment.fields"
     val EXTENDED_CONTENT_READ_CACHE_TTL = "extendted.content.read.cache.ttl"
     val EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS = "extended.content.hierarchy.read.children.nodes.fields"
     val EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES = "extended.content.enrich.children.categories"
