@@ -1313,7 +1313,11 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   def read(request: Request): Future[Response] = {
     val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
-    val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+    val fields: util.List[String] = request.get("fields") match {
+      case fieldsList: util.List[_] => fieldsList.asInstanceOf[util.List[String]]
+      case fieldsStr: String => JavaConverters.seqAsJavaListConverter(fieldsStr.split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+      case _ => new util.ArrayList[String]()
+    }
     request.getRequest.put("fields", fields)
     DataNode.read(request).map(node => {
       val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
