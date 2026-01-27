@@ -1111,7 +1111,18 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
             val enrichedCourse = new util.HashMap[String, AnyRef](course)
             // Merge fetched course data (includes hierarchy children)
             if (courseId.nonEmpty && courseMap.contains(courseId)) {
-              enrichedCourse.putAll(courseMap(courseId))
+              val courseData = courseMap(courseId)
+              // Defensive: Check if courseData is accidentally a Response object (shouldn't happen, but handle gracefully)
+              if (courseData.containsKey("result") && courseData.containsKey("responseCode") && courseData.containsKey("params")) {
+                logger.warn(s"[enrichMilestones] Course data for $courseId is incorrectly a Response object - extracting content")
+                val result = courseData.get("result").asInstanceOf[util.Map[String, AnyRef]]
+                if (result != null && result.containsKey(ContentConstants.CONTENT)) {
+                  enrichedCourse.putAll(result.get(ContentConstants.CONTENT).asInstanceOf[util.Map[String, AnyRef]])
+                }
+              } else {
+                // Normal case: courseData is a Map
+                enrichedCourse.putAll(courseData)
+              }
             }
             enrichedCourse.asInstanceOf[util.Map[String, AnyRef]]
           }.toList
