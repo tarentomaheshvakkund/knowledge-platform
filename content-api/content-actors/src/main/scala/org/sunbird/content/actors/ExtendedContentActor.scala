@@ -58,6 +58,7 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
   // Configuration for extended read operations
   private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
+  private val childrenContentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CHILDREN_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
   private val enrichChildrenCategories: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICH_CHILDREN_CATEGORIES).asScala.toSet
   private val assessmentReadFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ASSESSMENT_READ_FIELDS).asScala.toList.asJava
@@ -985,12 +986,19 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
     if (cachedData != null && cachedData.nonEmpty) {
       try {
         val cachedResponse = JsonUtils.deserialize(cachedData, classOf[Response])
+        // Initialize params if null (required for BaseController.setResponseEnvelope)
+        if (cachedResponse.getParams == null) {
+          val params = new org.sunbird.common.dto.ResponseParams()
+          params.setStatus(org.sunbird.common.dto.ResponseParams.StatusType.successful.name())
+          cachedResponse.setParams(params)
+        }
         return Future.successful(cachedResponse)
       } catch {
         case e: Exception =>
           logger.warn(s"[extendedRead] Cache deserialization failed for $identifier", e)
       }
     }
+    request.getRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
     //Cache miss - perform standard content read
     read(request).flatMap { response =>
       //Extract content metadata from response
@@ -1103,7 +1111,18 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
             val enrichedCourse = new util.HashMap[String, AnyRef](course)
             // Merge fetched course data (includes hierarchy children)
             if (courseId.nonEmpty && courseMap.contains(courseId)) {
-              enrichedCourse.putAll(courseMap(courseId))
+              val courseData = courseMap(courseId)
+              // Defensive: Check if courseData is accidentally a Response object (shouldn't happen, but handle gracefully)
+              if (courseData.containsKey("result") && courseData.containsKey("responseCode") && courseData.containsKey("params")) {
+                logger.warn(s"[enrichMilestones] Course data for $courseId is incorrectly a Response object - extracting content")
+                val result = courseData.get("result").asInstanceOf[util.Map[String, AnyRef]]
+                if (result != null && result.containsKey(ContentConstants.CONTENT)) {
+                  enrichedCourse.putAll(result.get(ContentConstants.CONTENT).asInstanceOf[util.Map[String, AnyRef]])
+                }
+              } else {
+                // Normal case: courseData is a Map
+                enrichedCourse.putAll(courseData)
+              }
             }
             enrichedCourse.asInstanceOf[util.Map[String, AnyRef]]
           }.toList
@@ -1161,44 +1180,31 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   /**
    * Fetches course read data + hierarchy children.
-   * Implements Redis caching with key pattern: extended_read_content_{{courseId}}
+   * Does NOT cache - caching happens at extendedRead level to avoid double caching.
    *
    * Process:
-   * 1. Check Redis cache for pre-computed course+hierarchy data
-   * 2. If not cached, fetch course metadata from Neo4j (DataNode.read)
-   * 3. Fetch hierarchy children from Cassandra (HierarchyManager.getHierarchy)
-   * 4. Filter children to include only configured fields
-   * 5. Merge course metadata + children
-   * 6. Cache the result and return
+   * 1. Fetch course metadata from Neo4j (DataNode.read)
+   * 2. Fetch hierarchy children from Cassandra (HierarchyManager.getHierarchy)
+   * 3. Filter children to include only configured fields
+   * 4. Merge course metadata + children and return
    *
    * Note: Course data comes from Neo4j, hierarchy structure comes from Cassandra
+   * Caching strategy: Only extendedRead caches the complete Response to avoid redundant cache entries
    *
    * @param courseId        Course identifier
    * @param originalRequest Request context (authentication, version, etc.)
    * @return Future[Map] with course read data and filtered children from hierarchy
    */
   private def fetchCourseWithHierarchy(courseId: String, originalRequest: Request): Future[util.Map[String, AnyRef]] = {
-    //Build cache key and check Redis cache
-    val cacheKey = s"${ContentConstants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX}$courseId"
-    val cachedData = RedisCache.get(cacheKey)
-    if (cachedData != null && cachedData.nonEmpty) {
-      try {
-        val cachedMap = JsonUtils.deserialize(cachedData, classOf[java.util.Map[String, AnyRef]])
-        return Future.successful(cachedMap)
-      } catch {
-        case e: Exception =>
-          logger.warn(s"[fetchCourse] Cache deserialization failed for $courseId", e)
-      }
-    }
     val readRequest = new Request(originalRequest)
     readRequest.put(ContentConstants.IDENTIFIER, courseId)
-    readRequest.put(ContentConstants.FIELDS, contentEnrichmentFields)
+    readRequest.put(ContentConstants.FIELDS, childrenContentEnrichmentFields)
     val hierarchyRequest = new Request(originalRequest)
     hierarchyRequest.getRequest.put(ContentConstants.IDENTIFIER, courseId)
     hierarchyRequest.getRequest.put(ContentConstants.ROOT_ID, courseId)
     //Fetch course metadata from Neo4j
     val readFuture = DataNode.read(readRequest).map { node =>
-      val fields = contentEnrichmentFields
+      val fields = childrenContentEnrichmentFields
       val version = originalRequest.getContext.getOrDefault(ContentConstants.VERSION, "").asInstanceOf[String]
       val metadata = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), version)
       metadata.put(ContentConstants.IDENTIFIER, node.getIdentifier.replace(".img", ""))
@@ -1233,13 +1239,6 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       children.foreach { c =>
         val filteredChildren = filterChildrenFields(c)
         courseData.put(ContentConstants.CHILDREN, filteredChildren)
-      }
-      try {
-        val serializedData = JsonUtils.serialize(courseData)
-        RedisCache.set(cacheKey, serializedData, extendedContentReadCacheTTL)
-      } catch {
-        case e: Exception =>
-          logger.error(s"[fetchCourse] Cache set failed for $courseId", e)
       }
       courseData
     }
@@ -1311,7 +1310,11 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   def read(request: Request): Future[Response] = {
     val responseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
-    val fields: util.List[String] = JavaConverters.seqAsJavaListConverter(request.get("fields").asInstanceOf[String].split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+    val fields: util.List[String] = request.get("fields") match {
+      case fieldsList: util.List[_] => fieldsList.asInstanceOf[util.List[String]]
+      case fieldsStr: String => JavaConverters.seqAsJavaListConverter(fieldsStr.split(",").filter(field => StringUtils.isNotBlank(field) && !StringUtils.equalsIgnoreCase(field, "null"))).asJava
+      case _ => new util.ArrayList[String]()
+    }
     request.getRequest.put("fields", fields)
     DataNode.read(request).map(node => {
       val metadata: util.Map[String, AnyRef] = NodeUtil.serialize(node, fields, node.getObjectType.toLowerCase.replace("image", ""), request.getContext.get("version").asInstanceOf[String])
