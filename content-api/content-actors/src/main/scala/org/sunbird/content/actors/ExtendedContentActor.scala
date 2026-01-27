@@ -986,6 +986,12 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
     if (cachedData != null && cachedData.nonEmpty) {
       try {
         val cachedResponse = JsonUtils.deserialize(cachedData, classOf[Response])
+        // Initialize params if null (required for BaseController.setResponseEnvelope)
+        if (cachedResponse.getParams == null) {
+          val params = new org.sunbird.common.dto.ResponseParams()
+          params.setStatus(org.sunbird.common.dto.ResponseParams.StatusType.successful.name())
+          cachedResponse.setParams(params)
+        }
         return Future.successful(cachedResponse)
       } catch {
         case e: Exception =>
@@ -1163,35 +1169,22 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   /**
    * Fetches course read data + hierarchy children.
-   * Implements Redis caching with key pattern: extended_read_content_{{courseId}}
+   * Does NOT cache - caching happens at extendedRead level to avoid double caching.
    *
    * Process:
-   * 1. Check Redis cache for pre-computed course+hierarchy data
-   * 2. If not cached, fetch course metadata from Neo4j (DataNode.read)
-   * 3. Fetch hierarchy children from Cassandra (HierarchyManager.getHierarchy)
-   * 4. Filter children to include only configured fields
-   * 5. Merge course metadata + children
-   * 6. Cache the result and return
+   * 1. Fetch course metadata from Neo4j (DataNode.read)
+   * 2. Fetch hierarchy children from Cassandra (HierarchyManager.getHierarchy)
+   * 3. Filter children to include only configured fields
+   * 4. Merge course metadata + children and return
    *
    * Note: Course data comes from Neo4j, hierarchy structure comes from Cassandra
+   * Caching strategy: Only extendedRead caches the complete Response to avoid redundant cache entries
    *
    * @param courseId        Course identifier
    * @param originalRequest Request context (authentication, version, etc.)
    * @return Future[Map] with course read data and filtered children from hierarchy
    */
   private def fetchCourseWithHierarchy(courseId: String, originalRequest: Request): Future[util.Map[String, AnyRef]] = {
-    //Build cache key and check Redis cache
-    val cacheKey = s"${ContentConstants.EXTENDED_READ_CONTENT_CACHE_KEY_PREFIX}$courseId"
-    val cachedData = RedisCache.get(cacheKey)
-    if (cachedData != null && cachedData.nonEmpty) {
-      try {
-        val cachedMap = JsonUtils.deserialize(cachedData, classOf[java.util.Map[String, AnyRef]])
-        return Future.successful(cachedMap)
-      } catch {
-        case e: Exception =>
-          logger.warn(s"[fetchCourse] Cache deserialization failed for $courseId", e)
-      }
-    }
     val readRequest = new Request(originalRequest)
     readRequest.put(ContentConstants.IDENTIFIER, courseId)
     readRequest.put(ContentConstants.FIELDS, childrenContentEnrichmentFields)
@@ -1235,13 +1228,6 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       children.foreach { c =>
         val filteredChildren = filterChildrenFields(c)
         courseData.put(ContentConstants.CHILDREN, filteredChildren)
-      }
-      try {
-        val serializedData = JsonUtils.serialize(courseData)
-        RedisCache.set(cacheKey, serializedData, extendedContentReadCacheTTL)
-      } catch {
-        case e: Exception =>
-          logger.error(s"[fetchCourse] Cache set failed for $courseId", e)
       }
       courseData
     }
