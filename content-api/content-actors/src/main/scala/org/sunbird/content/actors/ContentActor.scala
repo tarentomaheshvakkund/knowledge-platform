@@ -33,6 +33,7 @@ import javax.inject.Inject
 import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, Map}
 import scala.concurrent.{ExecutionContext, Future}
+import com.fasterxml.jackson.databind.ObjectMapper
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -53,6 +54,12 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
       retirementRequestTable,
       util.Arrays.asList(ContentConstants.RETITEMENT_PRIMARY_KEY)
     )
+
+		private val extendedReadContentKey: String = Platform.getString(ContentConstants.EXTENDED_READ_CONTENT_KEY, "extended_read_content_")
+
+	  private val extendedReadAssessmentKey: String = Platform.getString(ContentConstants.EXTENDED_READ_ASSESSMENT_KEY, "extended_read_assessment_")
+
+	  val mapper = new ObjectMapper()
 
 	override def onReceive(request: Request): Future[Response] = {
 		request.getOperation match {
@@ -255,6 +262,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 				} catch {
 					case e: Exception => logger.info("Error while sending notification ", e)
 				}
+			}
+			try {
+				invalidateExtendedReadCaches(identifier, node.getMetadata)
+				logger.info(s"Extended-read cache invalidated for contentId=$identifier")
+			} catch {
+				case e: Exception =>
+					logger.warn(s"Failed to invalidate extended-read cache for $identifier", e)
 			}
 			ResponseHandler.OK.put("node_id", identifier).put("identifier", identifier)
 				.put("versionKey", node.getMetadata.get("versionKey"))
@@ -891,6 +905,68 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 			}
 		}.map { resultMap =>
 			ResponseHandler.OK().putAll(resultMap.asJava)
+		}
+	}
+
+	private def invalidateExtendedReadCaches(
+																						contentId: String,
+																						contentMeta: java.util.Map[String, AnyRef]
+																					): Unit = {
+
+
+		val contentCacheKey = s"$extendedReadContentKey$contentId"
+		RedisCache.delete(contentCacheKey)
+		logger.info(s"Invalidated cache key=$contentCacheKey")
+
+		val assessmentIds = scala.collection.mutable.Set[String]()
+
+
+		val prelim = contentMeta.get(ContentConstants.PRELIMINARY_ASSESSMENT)
+		if (prelim != null && prelim.toString.trim.nonEmpty) {
+			assessmentIds += prelim.toString.trim
+			logger.info(s"Found preliminary assessmentId=$prelim")
+		}
+
+		val milestonesRaw = contentMeta.get(ContentConstants.MILESTONES_V1)
+
+		if (milestonesRaw != null && milestonesRaw.isInstanceOf[String]) {
+			val milestonesJson = milestonesRaw.asInstanceOf[String].trim
+
+			if (milestonesJson.nonEmpty && milestonesJson.startsWith("[")) {
+				try {
+					val rootNode = mapper.readTree(milestonesJson)
+
+					val it = rootNode.elements()
+					while (it.hasNext) {
+						val milestone = it.next()
+
+						val assessmentDetail = milestone.get(ContentConstants.ASSESSMENT_DETAIL)
+						if (assessmentDetail != null) {
+							val idNode = assessmentDetail.get(ContentConstants.IDENTIFIER)
+							if (idNode != null && !idNode.asText().trim.isEmpty) {
+								val assessmentId = idNode.asText().trim
+								assessmentIds += assessmentId
+								logger.info(s"Found milestone assessmentId=$assessmentId")
+							}
+						}
+					}
+
+				} catch {
+					case e: Exception =>
+						logger.error(
+							s"Failed to parse milestones_v1 JSON for contentId=$contentId",
+							e
+						)
+				}
+			}
+		}
+
+		val it = assessmentIds.iterator
+		while (it.hasNext) {
+			val assessmentId = it.next()
+			val assessmentCacheKey = s"$extendedReadAssessmentKey$assessmentId"
+			RedisCache.delete(assessmentCacheKey)
+			logger.info(s"Invalidated cache key=$assessmentCacheKey")
 		}
 	}
 

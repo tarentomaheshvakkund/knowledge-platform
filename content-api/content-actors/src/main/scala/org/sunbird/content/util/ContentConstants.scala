@@ -199,6 +199,8 @@ object ContentConstants {
     val PRELIMINARY_ASSESSMENT_DETAIL = "preliminaryAssessmentDetail"
     val ERROR = "error"
     val FIELDS = "fields"
+    val EXTENDED_READ_CONTENT_KEY = "extended.read.content.key"
+    val EXTENDED_READ_ASSESSMENT_KEY = "extended.read.assessment.key"
     val CREATED_DATE = "created_date"
     val APPROVED_DATE = "approved_date"
 }
