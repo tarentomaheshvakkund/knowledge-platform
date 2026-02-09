@@ -15,6 +15,7 @@ import org.sunbird.graph.dac.model.Node
 import org.sunbird.graph.utils.NodeUtil
 import org.sunbird.managers.HierarchyManager.hierarchyPrefix
 import org.sunbird.managers.{AssessmentManager, HierarchyManager, UpdateHierarchyManager}
+import org.slf4j.LoggerFactory
 import org.sunbird.utils.RequestUtil
 
 import scala.collection.JavaConverters
@@ -23,6 +24,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class QuestionSetActor @Inject()(implicit oec: OntologyEngineContext) extends BaseActor {
 
+	private val logger = LoggerFactory.getLogger("QuestionSetActor")
 	implicit val ec: ExecutionContext = getContext().dispatcher
 	private lazy val importConfig = getImportConfig()
 	private lazy val importMgr = new ImportManager(importConfig)
@@ -84,7 +86,10 @@ class QuestionSetActor @Inject()(implicit oec: OntologyEngineContext) extends Ba
 		AssessmentManager.getValidatedNodeForPublish(request, "ERR_QUESTION_SET_PUBLISH").flatMap(node => {
 			AssessmentManager.getQuestionSetHierarchy(request, node).map(hierarchyString => {
 				AssessmentManager.validateQuestionSetHierarchy(hierarchyString.asInstanceOf[String], node.getMetadata.getOrDefault("createdBy", "").asInstanceOf[String])
+				// TODO: Debug logs for UAT/QA investigation - remove before production
+				logger.info("QuestionSetActor:publish - Before pushInstructionEvent for identifier: " + node.getIdentifier)
 				AssessmentManager.pushInstructionEvent(node.getIdentifier, node)
+				logger.info("QuestionSetActor:publish - After pushInstructionEvent for identifier: " + node.getIdentifier)
 				ResponseHandler.OK.putAll(Map[String, AnyRef]("identifier" -> node.getIdentifier.replace(".img", ""), "message" -> "Question is successfully sent for Publish").asJava)
 			})
 		})
