@@ -609,6 +609,8 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
       .and(QueryBuilder.set(ContentConstants.APPROVED_AT, new java.util.Date()))
       .and(QueryBuilder.set(ContentConstants.STATUS, statusValue))
       .and(QueryBuilder.set(ContentConstants.APPROVED_COMMENT, action))
+      .and(QueryBuilder.set(ContentConstants.LAST_ENROLLMENT_DATE_RQST, result.get(ContentConstants.LAST_ENROLLMENT_DATE_RQST)))
+      .and(QueryBuilder.set(ContentConstants.RETIREMENT_DATE_RQST, result.get(ContentConstants.RETIREMENT_DATE_RQST)))
       .and(QueryBuilder.set(ContentConstants.APPROVED_DATE, cassandraApprovedDate))
 
     CassandraConnector.getSession
