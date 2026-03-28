@@ -470,6 +470,13 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
       } catch {
         case e: Exception => logger.info("Error while sending notification ", e)
       }
+			try {
+				invalidateExtendedReadCaches(identifier, node.getMetadata)
+				logger.info(s"Extended-read cache invalidated for contentId=$identifier")
+			} catch {
+				case e: Exception =>
+					logger.warn(s"Failed to invalidate extended-read cache for $identifier", e)
+			}
 			ResponseHandler.OK.put("identifier", identifier).put("status", "success")
 		})
 	}
@@ -928,7 +935,6 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 		}
 
 		val milestonesRaw = contentMeta.get(ContentConstants.MILESTONES_V1)
-
 		if (milestonesRaw != null && milestonesRaw.isInstanceOf[String]) {
 			val milestonesJson = milestonesRaw.asInstanceOf[String].trim
 
