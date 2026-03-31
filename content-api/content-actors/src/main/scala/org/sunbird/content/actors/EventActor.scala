@@ -124,7 +124,20 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
   }
 
   override def retire(request: Request): Future[Response] = {
-    verifyStandaloneEventAndApply(super.retire, request)
+    verifyStandaloneEventAndApply(super.retire, request).flatMap(response => {
+      deleteRedisKeyOnRetire(request, response)
+    })
+  }
+
+  private def deleteRedisKeyOnRetire(request: Request, response: Response): Future[Response] = {
+    if (response.getResponseCode == ResponseCode.OK) {
+      val identifier = request.get("identifier").asInstanceOf[String]
+      if (StringUtils.isNotBlank(identifier)) {
+        val redisKey = s"$identifier:user-event-enrolments"
+        RedisCache.delete(redisKey)
+      }
+    }
+    Future.successful(response)
   }
 
   private def verifyStandaloneEventAndApply(f: Request => Future[Response], request: Request, isPublish: Boolean = false, dataUpdater: Option[Node => Unit] = None): Future[Response] = {
