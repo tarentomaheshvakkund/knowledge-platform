@@ -2,12 +2,12 @@ package org.sunbird.content.upload.mgr
 
 import java.io.File
 import java.util
-
 import org.apache.commons.lang3.StringUtils
 import org.sunbird.models.UploadParams
 import org.sunbird.common.Platform
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResponseCode}
+import org.sunbird.content.upload.mgr.validator.FileUploadValidator
 import org.sunbird.content.util.ContentConstants
 import org.sunbird.graph.OntologyEngineContext
 import org.sunbird.graph.dac.model.Node
@@ -38,6 +38,7 @@ object UploadManager {
 		val mediaType = node.getMetadata.getOrDefault("mediaType", "").asInstanceOf[String]
 		val mgr = MimeTypeManagerFactory.getManager(node.getObjectType, mimeType)
 		val params: UploadParams = request.getContext.get("params").asInstanceOf[UploadParams]
+		FileUploadValidator.validate(file, mimeType)
 		val uploadFuture: Future[Map[String, AnyRef]] = if (StringUtils.isNotBlank(fileUrl)) mgr.upload(identifier, node, fileUrl, filePath, params) else mgr.upload(identifier, node, file, filePath, params)
 		uploadFuture.map(result => {
 			if(filePath.isDefined)

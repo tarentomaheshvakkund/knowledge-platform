@@ -6,6 +6,7 @@ import org.sunbird.common.Platform
 import org.sunbird.mimetype.mgr.MimeTypeManager
 import org.sunbird.mimetype.mgr.impl.{ApkMimeTypeMgrImpl, AssetMimeTypeMgrImpl, CollectionMimeTypeMgrImpl, DefaultMimeTypeMgrImpl, DocumentMimeTypeMgrImpl, EcmlMimeTypeMgrImpl, H5PMimeTypeMgrImpl, HtmlMimeTypeMgrImpl, PluginMimeTypeMgrImpl, YouTubeMimeTypeMgrImpl}
 
+
 object MimeTypeManagerFactory {
 
 	implicit val ss: StorageService = new StorageService
@@ -37,4 +38,5 @@ object MimeTypeManagerFactory {
 			else defaultMimeTypeMgrImpl
 		}
 	}
+
 }
