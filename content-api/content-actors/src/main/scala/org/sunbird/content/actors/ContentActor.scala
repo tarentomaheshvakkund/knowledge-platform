@@ -34,6 +34,7 @@ import scala.collection.JavaConverters._
 import scala.collection.{JavaConverters, Map}
 import scala.concurrent.{ExecutionContext, Future}
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.sunbird.content.upload.mgr.validator.ArtifactUrlValidator
 
 class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageService) extends BaseActor {
 
@@ -90,6 +91,19 @@ class ContentActor @Inject() (implicit oec: OntologyEngineContext, ss: StorageSe
 	def create(request: Request): Future[Response] = {
 		populateDefaultersForCreation(request)
 		RequestUtil.restrictProperties(request)
+		val artifactUrl: String = request.getRequest.getOrDefault("artifactUrl", "").asInstanceOf[String]
+		if (StringUtils.isNotBlank(artifactUrl) && !ArtifactUrlValidator.isValid(artifactUrl)) {
+			if (StringUtils.isNotBlank(artifactUrl) &&
+				!ArtifactUrlValidator.isValid(artifactUrl)) {
+				return Future.successful(
+					ResponseHandler.ERROR(
+						ResponseCode.CLIENT_ERROR,
+						"ERR_INVALID_ARTIFACT_URL",
+						"Only whitelisted HTTPS URLs are allowed."
+					)
+				)
+			}
+		}
 		val startDateTimeStr = request.getRequest.getOrDefault("startDateTime", "").asInstanceOf[String]
 		val endDateTimeStr = request.getRequest.getOrDefault("endDateTime", "").asInstanceOf[String]
 		if (StringUtils.isNotBlank(startDateTimeStr) && StringUtils.isNotBlank(endDateTimeStr)) {

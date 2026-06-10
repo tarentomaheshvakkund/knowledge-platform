@@ -203,4 +203,5 @@ object ContentConstants {
     val EXTENDED_READ_ASSESSMENT_KEY = "extended.read.assessment.key"
     val CREATED_DATE = "created_date"
     val APPROVED_DATE = "approved_date"
+    val CONTENT_ARTIFACT_URL_ALLOWED_DOMAINS = "content.artifact.url.allowed.domains"
 }
