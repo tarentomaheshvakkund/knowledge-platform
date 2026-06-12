@@ -38,7 +38,19 @@ object UploadManager {
 		val mediaType = node.getMetadata.getOrDefault("mediaType", "").asInstanceOf[String]
 		val mgr = MimeTypeManagerFactory.getManager(node.getObjectType, mimeType)
 		val params: UploadParams = request.getContext.get("params").asInstanceOf[UploadParams]
-		FileUploadValidator.validate(file, mimeType)
+		try {
+			FileUploadValidator.validate(file, mimeType)
+		} catch {
+			case ex: Exception =>
+				return Future.successful(
+					ResponseHandler.ERROR(
+						ResponseCode.CLIENT_ERROR,
+						"ERR_INVALID_FILE",
+						ex.getMessage
+					)
+				)
+		}
+
 		val uploadFuture: Future[Map[String, AnyRef]] = if (StringUtils.isNotBlank(fileUrl)) mgr.upload(identifier, node, fileUrl, filePath, params) else mgr.upload(identifier, node, file, filePath, params)
 		uploadFuture.map(result => {
 			if(filePath.isDefined)
