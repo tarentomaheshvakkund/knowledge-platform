@@ -251,4 +251,49 @@ object RedisCache extends RedisConnector {
 		//Default Implementation Can Be Provided Here
 		List()
 	}
+
+	/**
+	 * Reads all fields of multiple Redis hashes using chunked pipelining from the specified DB index.
+	 * Chunks the keys into batches of chunkSize to avoid holding Redis busy for too long per flush,
+	 * while still minimising network round-trips vs. individual calls.
+	 * Resets the connection to DB index 0 before returning it to the pool.
+	 *
+	 * @param keys      List of Redis hash keys to read
+	 * @param dbIndex   Redis DB index to select
+	 * @param chunkSize Max commands per pipeline flush (default 50)
+	 * @return Map of key -> (field -> value); missing keys map to an empty inner map
+	 */
+	def hgetAllPipelined(keys: List[String], dbIndex: Int, chunkSize: Int = 50): Map[String, java.util.Map[String, String]] = {
+		if (keys.isEmpty) return Map.empty
+		val jedis = getConnection
+		try {
+			logger.info("Reading " + keys.size + " hashes from Redis (pipelined) dbIndex: " + dbIndex)
+			jedis.select(dbIndex)
+			val resultBuilder = scala.collection.mutable.Map[String, java.util.Map[String, String]]()
+			keys.grouped(chunkSize).foreach { chunk =>
+				val pipeline = jedis.pipelined()
+				val responses = chunk.map(key => key -> pipeline.hgetAll(key))
+				pipeline.sync()
+				logger.info("Completed reading chunk of " + chunk.size + " hashes from Redis (pipelined) dbIndex: " + dbIndex)
+				responses.foreach { case (key, resp) =>
+					val result = resp.get()
+					resultBuilder(key) = if (result != null) result else new java.util.HashMap[String, String]()
+				}
+				logger.info("Completed processing chunk of " + chunk.size + " hashes from Redis (pipelined) dbIndex: " + dbIndex)
+			}
+			logger.info("Completed reading " + keys.size + " hashes from Redis (pipelined) dbIndex: " + dbIndex)
+			resultBuilder.toMap
+		} catch {
+			case e: Exception =>
+				logger.error("Exception Occurred While Reading Hashes From Redis (pipelined) dbIndex: " + dbIndex + " | Exception is:", e)
+				Map.empty
+		} finally {
+			try {
+				jedis.select(0)
+			} catch {
+				case _: Exception => ()
+			}
+			returnConnection(jedis)
+		}
+	}
 }

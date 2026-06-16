@@ -57,6 +57,8 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
 
   // Configuration for extended read operations
   private val extendedContentReadCacheTTL: Int = Platform.getInteger(ContentConstants.EXTENDED_CONTENT_READ_CACHE_TTL, 86400)
+  private val bpBatchStatsCacheIndex: Int = Platform.getInteger(ContentConstants.BP_BATCH_STATS_CACHE_INDEX, 2)
+  private val bpBatchStatsPipelineChunkSize: Int = Platform.getInteger(ContentConstants.BP_BATCH_STATS_PIPELINE_CHUNK_SIZE, 50)
   private val contentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val childrenContentEnrichmentFields: util.List[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CHILDREN_CONTENT_ENRICHMENT_FIELDS).asScala.toList.asJava
   private val contentHierarchyFields: Set[String] = Platform.config.getStringList(ContentConstants.EXTENDED_CONTENT_HIERARCHY_CHILDREN_FIELDS).asScala.toSet
@@ -994,6 +996,14 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
           params.setStatus(org.sunbird.common.dto.ResponseParams.StatusType.successful.name())
           cachedResponse.setParams(params)
         }
+        val cachedResponseSchemaName: String = request.getContext.getOrDefault(ContentConstants.RESPONSE_SCHEMA_NAME, "").asInstanceOf[String]
+        val cachedContentKey = if (cachedResponseSchemaName.isEmpty) ContentConstants.CONTENT else cachedResponseSchemaName
+        val cachedCourseCategory = Option(cachedResponse.getResult.get(cachedContentKey))
+          .collect { case m: util.Map[_, _] => m.asInstanceOf[util.Map[String, AnyRef]] }
+          .map(_.getOrDefault(ContentConstants.COURSE_CATEGORY, "").asInstanceOf[String])
+          .getOrElse("")
+        if (StringUtils.equalsIgnoreCase(cachedCourseCategory, ContentConstants.BLENDED_PROGRAM))
+          enrichBatchStats(cachedResponse, cachedContentKey)
         return Future.successful(cachedResponse)
       } catch {
         case e: Exception =>
@@ -1028,6 +1038,8 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
           case e: Exception =>
             logger.error(s"[extendedRead] Cache set failed for $identifier", e)
         }
+        if (StringUtils.equalsIgnoreCase(courseCategory, ContentConstants.BLENDED_PROGRAM))
+          enrichBatchStats(enrichedResponse, contentKey)
         enrichedResponse
       }
     }.recover {
@@ -1553,6 +1565,61 @@ class ExtendedContentActor @Inject() (implicit oec: OntologyEngineContext, ss: S
         errorMap.put(ContentConstants.IDENTIFIER, assessmentId)
         errorMap.put(ContentConstants.ERROR, s"Failed to fetch: ${e.getMessage}")
         errorMap
+    }
+  }
+
+  /**
+   * Injects enrollment status counts into each batch's batchAttributes map.
+   * All batches are fetched from Redis in a single pipelined round-trip using
+   * hash keys of the form: bp:batch:enrollment:stats:<batchId>
+   * Each hash holds approved/pending/withdrawn/rejected counts as string fields.
+   * Missing or unparseable values default to 0.
+   */
+  private def enrichBatchStats(response: Response, contentKey: String): Unit = {
+    try {
+      val contentObj = response.getResult.get(contentKey)
+      if (contentObj == null) return
+      val meta = contentObj.asInstanceOf[util.Map[String, AnyRef]]
+      val batchesRaw = meta.get(ContentConstants.BATCHES)
+      if (batchesRaw == null) return
+      val batches = batchesRaw.asInstanceOf[util.List[util.Map[String, AnyRef]]]
+      if (batches.isEmpty) return
+      val batchList = batches.asScala.toList
+      val keys = batchList
+        .map(b => Option(b.get(ContentConstants.BATCH_ID)).map(_.asInstanceOf[String]).getOrElse(""))
+        .filter(StringUtils.isNotBlank)
+        .map(id => s"${ContentConstants.BP_BATCH_ENROLLMENT_STATS_KEY_PREFIX}$id")
+      if (keys.isEmpty) {
+        logger.info(s"[enrichBatchStats] No valid batchIds found for contentKey=$contentKey, skipping Redis fetch")
+        return
+      }
+      logger.info(s"[enrichBatchStats] Fetching enrollment stats for ${keys.size} batch(es) via single Redis pipeline, contentKey=$contentKey")
+      val statsMap = RedisCache.hgetAllPipelined(keys, bpBatchStatsCacheIndex, bpBatchStatsPipelineChunkSize)
+      batchList.foreach { batch =>
+        val batchId = Option(batch.get(ContentConstants.BATCH_ID)).map(_.asInstanceOf[String]).getOrElse("")
+        if (StringUtils.isNotBlank(batchId)) {
+          val redisKey = s"${ContentConstants.BP_BATCH_ENROLLMENT_STATS_KEY_PREFIX}$batchId"
+          val stats = statsMap.getOrElse(redisKey, new util.HashMap[String, String]())
+          if (stats.isEmpty) logger.warn(s"[enrichBatchStats] No stats found in Redis for batchId=$batchId (key=$redisKey)")
+          var attrsObj = batch.get(ContentConstants.BATCH_ATTRIBUTES)
+          if (attrsObj == null) {
+            attrsObj = new util.HashMap[String, AnyRef]()
+            batch.put(ContentConstants.BATCH_ATTRIBUTES, attrsObj)
+          }
+          val attrs = attrsObj.asInstanceOf[util.Map[String, AnyRef]]
+          def statLong(key: String): java.lang.Long =
+            Long.box(Option(stats.get(key)).flatMap(s => scala.util.Try(s.toLong).toOption).getOrElse(0L))
+          attrs.put(ContentConstants.TOTAL_APPROVED_COUNT, statLong(ContentConstants.STAT_APPROVED))
+          attrs.put(ContentConstants.TOTAL_PENDING_COUNT, statLong(ContentConstants.STAT_PENDING))
+          attrs.put(ContentConstants.TOTAL_WITHDRAWN_COUNT, statLong(ContentConstants.STAT_WITHDRAWN))
+          attrs.put(ContentConstants.TOTAL_REJECTED_COUNT, statLong(ContentConstants.STAT_REJECTED))
+          logger.debug(s"[enrichBatchStats] batchId=$batchId approved=${attrs.get(ContentConstants.TOTAL_APPROVED_COUNT)} pending=${attrs.get(ContentConstants.TOTAL_PENDING_COUNT)} withdrawn=${attrs.get(ContentConstants.TOTAL_WITHDRAWN_COUNT)} rejected=${attrs.get(ContentConstants.TOTAL_REJECTED_COUNT)}")
+        }
+      }
+      logger.info(s"[enrichBatchStats] Successfully injected enrollment stats for ${keys.size} batch(es), contentKey=$contentKey")
+    } catch {
+      case e: Exception =>
+        logger.error(s"[enrichBatchStats] Failed to enrich batch enrollment stats for contentKey=$contentKey", e)
     }
   }
 }
