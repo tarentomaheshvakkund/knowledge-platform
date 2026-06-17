@@ -58,6 +58,7 @@ public class HttpUrlUtilTest {
 		Map<String, Object> result = HTTPUrlUtil.getMetadata(url);
 	}
 
+	/* Dead code — testDownloadFileWithValidUrl commented out along with HTTPUrlUtil.downloadFile.
 	@Test
 	public void testDownloadFileWithValidUrl() {
 		String downloadFolder = "/tmp/content/" + System.currentTimeMillis() + "_temp/do_123";
@@ -66,5 +67,6 @@ public class HttpUrlUtilTest {
 		assertTrue(appIconFile.exists());
 		try {FileUtils.deleteDirectory(appIconFile.getParentFile().getParentFile());} catch(IOException io) {}
 	}
+	*/
 
 }

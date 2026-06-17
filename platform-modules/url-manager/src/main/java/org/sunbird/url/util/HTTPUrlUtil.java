@@ -64,6 +64,7 @@ public class HTTPUrlUtil {
 	 * @param saveDir
 	 *            path of the directory to save the file
 	 */
+	/*
 	public static File downloadFile(String fileURL, String saveDir) {
 		HttpURLConnection httpConn = null;
 		InputStream inputStream = null;
@@ -135,6 +136,6 @@ public class HTTPUrlUtil {
 		}
 
 		return file;
-	}
+	}*/
 
 }
