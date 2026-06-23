@@ -218,4 +218,5 @@ object ContentConstants {
     val TOTAL_REJECTED_COUNT = "totalRejectedCount"
     val BP_BATCH_STATS_CACHE_INDEX = "bp.batch.stats.cache.index"
     val BP_BATCH_STATS_PIPELINE_CHUNK_SIZE = "bp.batch.stats.pipeline.chunk.size"
+    val CONTENT_ARTIFACT_URL_ALLOWED_DOMAINS = "content.artifact.url.allowed.domains"
 }

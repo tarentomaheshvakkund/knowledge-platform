@@ -73,6 +73,28 @@ public class CustomProblemHandler implements ProblemHandler {
                         + " : "
                         + problem.getMessage());
             }
+            case "minLength": {
+                return ("Metadata " + Arrays.stream(problem.getPointer().split("/"))
+                        .filter(StringUtils::isNotBlank)
+                        .findFirst().orElse("field")
+                        + " should have minimum length of "
+                        + problem.parametersAsMap().get("limit")
+                        + " characters");
+            }
+            case "maxLength": {
+                return ("Metadata " + Arrays.stream(problem.getPointer().split("/"))
+                        .filter(StringUtils::isNotBlank)
+                        .findFirst().orElse("field")
+                        + " should not exceed maximum length of "
+                        + problem.parametersAsMap().get("limit")
+                        + " characters");
+            }
+            case "pattern": {
+                return ("Metadata " + Arrays.stream(problem.getPointer().split("/"))
+                        .filter(StringUtils::isNotBlank)
+                        .findFirst().orElse("field")
+                        + " contains invalid characters. Special characters like <, >, {, }, [, ] are not allowed");
+            }
             default:
                 return "";
         }
