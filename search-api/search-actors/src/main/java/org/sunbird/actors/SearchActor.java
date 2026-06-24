@@ -106,6 +106,14 @@ public class SearchActor extends SearchBaseActor {
                 searchObj.setSecureSettingsDisabled(false);
             }
             searchObj.setUserOrgId((String) request.getContext().get("x-user-channel-id"));
+            if (request.getContext() != null) {
+                if (request.getContext().containsKey(SearchConstants.USER_ROLES)) {
+                    searchObj.addAdditionalProperty(SearchConstants.USER_ROLES, request.getContext().get(SearchConstants.USER_ROLES));
+                }
+                if (request.getContext().containsKey(SearchConstants.ORG)) {
+                    searchObj.addAdditionalProperty(SearchConstants.ORG, request.getContext().get(SearchConstants.ORG));
+                }
+            }
             TelemetryManager.log("Search Request: ", req);
             String queryString = (String) req.get(SearchConstants.query);
             int allowedQueryStringLength;

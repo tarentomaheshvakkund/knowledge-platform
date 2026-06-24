@@ -245,6 +245,27 @@ public class SearchProcessor {
 		searchSourceBuilder.size(searchDTO.getLimit());
 		searchSourceBuilder.from(searchDTO.getOffset());
 		QueryBuilder query = getSearchQuery(searchDTO);
+		List<String> userRoles = (List<String>) searchDTO.getAdditionalProperty(SearchConstants.USER_ROLES);
+		String org = (String) searchDTO.getAdditionalProperty(SearchConstants.ORG);
+		if (userRoles != null && userRoles.contains(SearchConstants.ROLE_VOLUNTEER) && org != null && !org.isEmpty()) {
+			String orgEligibilityIndex = Platform.config.hasPath(SearchConstants.ORG_ELIGIBILITY_INDEX) ? 
+				Platform.config.getString(SearchConstants.ORG_ELIGIBILITY_INDEX) : SearchConstants.ORG_ELIGIBILITY_INDEX_DEFAULT;
+			org.elasticsearch.indices.TermsLookup termsLookup = new org.elasticsearch.indices.TermsLookup(
+				orgEligibilityIndex,
+				SearchConstants.ES_MAPPING_TYPE_DOC,
+				org,
+				SearchConstants.COURSE_IDS
+			);
+			TermsQueryBuilder termsLookupQuery = QueryBuilders.termsQuery(SearchConstants.identifier, termsLookup);
+			if (query instanceof BoolQueryBuilder) {
+				((BoolQueryBuilder) query).filter(termsLookupQuery);
+			} else {
+				BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
+				boolQuery.must(query);
+				boolQuery.filter(termsLookupQuery);
+				query = boolQuery;
+			}
+		}
 		if (searchDTO.isFuzzySearch())
 			relevanceSort = true;
 
