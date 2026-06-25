@@ -228,10 +228,22 @@ public class SearchProcessor {
 
 		SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
 		List<String> fields = searchDTO.getFields();
-		if (null != fields && !fields.isEmpty()) {
-			fields.add("objectType");
-			fields.add("identifier");
-			searchSourceBuilder.fetchSource(fields.toArray(new String[fields.size()]), null);
+		String apiVersion = (String) searchDTO.getAdditionalProperty(SearchConstants.API_VERSION);
+		if (org.apache.commons.lang3.StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)) {
+			List<String> v5Fields = new ArrayList<>();
+			v5Fields.add("identifier");
+			v5Fields.add("objectType");
+			if (CollectionUtils.isNotEmpty(searchDTO.getFacets())) {
+				v5Fields.addAll(searchDTO.getFacets());
+			}
+			List<String> dedupFields = v5Fields.stream().distinct().collect(Collectors.toList());
+			searchSourceBuilder.fetchSource(dedupFields.toArray(new String[dedupFields.size()]), null);
+		} else {
+			if (null != fields && !fields.isEmpty()) {
+				fields.add("objectType");
+				fields.add("identifier");
+				searchSourceBuilder.fetchSource(fields.toArray(new String[fields.size()]), null);
+			}
 		}
 
 		if (searchDTO.getFacets() != null && groupByFinalList != null) {
@@ -246,17 +258,24 @@ public class SearchProcessor {
 		searchSourceBuilder.from(searchDTO.getOffset());
 		QueryBuilder query = getSearchQuery(searchDTO);
 		List<String> userRoles = (List<String>) searchDTO.getAdditionalProperty(SearchConstants.USER_ROLES);
-		String org = (String) searchDTO.getAdditionalProperty(SearchConstants.ORG);
-		if (userRoles != null && userRoles.contains(SearchConstants.ROLE_VOLUNTEER) && org != null && !org.isEmpty()) {
+		String orgId = (String) searchDTO.getAdditionalProperty(SearchConstants.ORG);
+		if (StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)
+				&& userRoles != null && userRoles.contains(SearchConstants.ROLE_VOLUNTEER) && orgId != null && !orgId.isEmpty()) {
 			String orgEligibilityIndex = Platform.config.hasPath(SearchConstants.ORG_ELIGIBILITY_INDEX) ? 
 				Platform.config.getString(SearchConstants.ORG_ELIGIBILITY_INDEX) : SearchConstants.ORG_ELIGIBILITY_INDEX_DEFAULT;
 			org.elasticsearch.indices.TermsLookup termsLookup = new org.elasticsearch.indices.TermsLookup(
 				orgEligibilityIndex,
 				SearchConstants.ES_MAPPING_TYPE_DOC,
-				org,
+				orgId,
 				SearchConstants.COURSE_IDS
 			);
-			TermsQueryBuilder termsLookupQuery = QueryBuilders.termsQuery(SearchConstants.identifier, termsLookup);
+			TermsQueryBuilder termsLookupQuery;
+			try {
+				java.lang.reflect.Constructor<TermsQueryBuilder> constructor = TermsQueryBuilder.class.getConstructor(String.class, org.elasticsearch.indices.TermsLookup.class);
+				termsLookupQuery = constructor.newInstance(SearchConstants.identifier, termsLookup);
+			} catch (Exception e) {
+				throw new RuntimeException("Failed to instantiate TermsQueryBuilder", e);
+			}
 			if (query instanceof BoolQueryBuilder) {
 				((BoolQueryBuilder) query).filter(termsLookupQuery);
 			} else {

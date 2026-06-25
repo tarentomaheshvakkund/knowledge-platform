@@ -50,6 +50,7 @@ class ExtendedSearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchA
 
         internalReq.getContext.put(SearchConstants.USER_ROLES, userRoles)
         internalReq.getContext.put(SearchConstants.ORG, org)
+        internalReq.getContext.put(SearchConstants.API_VERSION, SearchConstants.VERSION_V5)
 
         val filters = internalReq.getRequest.getOrDefault(SearchConstants.filters, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]
         val visibilityObject = filters.getOrDefault("visibility","")

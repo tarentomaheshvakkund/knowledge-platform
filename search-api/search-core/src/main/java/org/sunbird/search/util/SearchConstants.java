@@ -131,4 +131,6 @@ public class SearchConstants {
     public static final String ORG_ELIGIBILITY_INDEX_DEFAULT = "org_eligibility_alias";
     public static final String ES_MAPPING_TYPE_DOC = "_doc";
     public static final String COURSE_IDS = "courseIds";
+    public static final String API_VERSION = "apiVersion";
+    public static final String VERSION_V5 = "v5";
 }
