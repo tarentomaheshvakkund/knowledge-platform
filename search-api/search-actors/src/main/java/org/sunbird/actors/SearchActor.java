@@ -54,7 +54,6 @@ public class SearchActor extends SearchBaseActor {
                         if (StringUtils.isNotBlank(mode) && StringUtils.equalsIgnoreCase("collection", mode)) {
                             finalResult = getCollectionsResult(lstResult, processor, request);
                         }
-                        finalResult = filterV5Results(finalResult, request);
                         return OK(finalResult);
                     }
                 }, getContext().dispatcher()).recoverWith(new Recover<Future<Response>>() {
@@ -82,7 +81,9 @@ public class SearchActor extends SearchBaseActor {
                 }, getContext().dispatcher());
             } else if (StringUtils.equalsIgnoreCase("GROUP_SEARCH_RESULT_BY_OBJECTTYPE", operation)) {
                 Map<String, Object> searchResponse = (Map<String, Object>) request.get("searchResult");
-                return Futures.successful(OK(getCompositeSearchResponse(searchResponse)));
+                Map<String, Object> groupedResult = getCompositeSearchResponse(searchResponse);
+                groupedResult = filterV5Results(groupedResult, request);
+                return Futures.successful(OK(groupedResult));
             } else {
                 TelemetryManager.log("Unsupported operation: " + operation);
                 throw new ClientException(SearchConstants.ERR_INVALID_OPERATION,
@@ -853,25 +854,35 @@ public class SearchActor extends SearchBaseActor {
     public static Map<String, Object> filterV5Results(Map<String, Object> finalResult, Request request) {
         String apiVersion = (String) request.getContext().get(SearchConstants.API_VERSION);
         if (StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)) {
-            List<Map<String, Object>> results = (List<Map<String, Object>>) finalResult.get("results");
-            if (results != null) {
-                List<String> facets = (List<String>) request.getRequest().get(SearchConstants.facets);
-                Set<String> allowedFields = new java.util.HashSet<>();
-                allowedFields.add("identifier");
-                if (facets != null) {
-                    allowedFields.addAll(facets);
-                }
-                List<Map<String, Object>> filteredResults = new ArrayList<>();
-                for (Map<String, Object> doc : results) {
-                    Map<String, Object> filteredDoc = new HashMap<>();
-                    for (String field : allowedFields) {
-                        if (doc.containsKey(field)) {
-                            filteredDoc.put(field, doc.get(field));
+            List<String> facets = (List<String>) request.getRequest().get(SearchConstants.facets);
+            Set<String> allowedFields = new java.util.HashSet<>();
+            allowedFields.add("identifier");
+            if (facets != null) {
+                allowedFields.addAll(facets);
+            }
+            for (Map.Entry<String, Object> entry : finalResult.entrySet()) {
+                String key = entry.getKey();
+                if (!StringUtils.equalsIgnoreCase("facets", key) && entry.getValue() instanceof List) {
+                    List<?> list = (List<?>) entry.getValue();
+                    if (CollectionUtils.isNotEmpty(list)) {
+                        if (list.get(0) instanceof Map) {
+                            List<Map<String, Object>> filteredList = new ArrayList<>();
+                            for (Object obj : list) {
+                                if (obj instanceof Map) {
+                                    Map<String, Object> doc = (Map<String, Object>) obj;
+                                    Map<String, Object> filteredDoc = new HashMap<>();
+                                    for (String field : allowedFields) {
+                                        if (doc.containsKey(field)) {
+                                            filteredDoc.put(field, doc.get(field));
+                                        }
+                                    }
+                                    filteredList.add(filteredDoc);
+                                }
+                            }
+                            entry.setValue(filteredList);
                         }
                     }
-                    filteredResults.add(filteredDoc);
                 }
-                finalResult.put("results", filteredResults);
             }
         }
         return finalResult;

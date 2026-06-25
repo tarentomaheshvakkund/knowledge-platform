@@ -5,6 +5,7 @@ import org.specs2.runner._
 import play.api.libs.json.{JsValue, Json}
 import play.api.test._
 import play.api.test.Helpers._
+import play.api.inject.guice.GuiceApplicationBuilder
 
 @RunWith(classOf[JUnitRunner])
 class ExtendedSearchControllerSpec extends BaseSpec {
@@ -230,6 +231,69 @@ class ExtendedSearchControllerSpec extends BaseSpec {
             filteredDoc.containsKey("objectType") must beFalse
             filteredDoc.get("identifier") must equalTo("do_12345")
             filteredDoc.get("contentType") must equalTo("Resource")
+        }
+
+        "test searchV5 against localhost:9210" in {
+            val realApp = new GuiceApplicationBuilder()
+                .configure("search.es_conn_info" -> "localhost:9210")
+                .build()
+            val matchRes = try {
+                val controller = realApp.injector.instanceOf[controllers.ExtendedSearchController]
+                val json: JsValue = Json.parse("""{
+                    "request": {
+                        "filters": {
+                            "courseCategory": [
+                                "course"
+                            ],
+                            "status": "Live"
+                        },
+                        "fields": [
+                            "identifier",
+                            "courseCategory",
+                            "organisation",
+                            "source",
+                            "name"
+                        ],
+                        "query": "",
+                        "sort_by": {
+                            "lastUpdatedOn": "desc"
+                        },
+                        "limit": 20,
+                        "offset": 0,
+                        "facets": [
+                            "courseCategory"
+                        ]
+                    }
+                }""")
+                val volunteerTokenLocal = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX3JvbGVzIjpbIlZPTFVOVEVFUiJdLCJvcmciOiIwMTMyMjM4NzYzMjk3MTc3NjAxIn0.dummy-signature"
+                val fakeRequest = FakeRequest("POST", "/v5/search")
+                  .withJsonBody(json)
+                  .withHeaders("x-authenticated-user-token" -> volunteerTokenLocal)
+                val response = controller.searchV5()(fakeRequest)
+                status(response) must equalTo(OK)
+                val responseJson = Json.parse(contentAsString(response))
+                println("searchV5 Local Response: " + responseJson)
+                val result = (responseJson \ "result").as[play.api.libs.json.JsObject]
+                val results = (result \ "content").as[List[play.api.libs.json.JsObject]]
+                
+                results.size must equalTo(5)
+                val identifiers = results.map(r => (r \ "identifier").as[String]).toSet
+                identifiers must contain(exactly(
+                    "do_114574184963473408118",
+                    "do_114467465667813376119",
+                    "do_114470339336118272184",
+                    "do_114516959599017984156",
+                    "do_114514834651488256141"
+                ))
+                val keysCheck = results.forall { r =>
+                    val keys = r.keys
+                    keys.contains("identifier") && (keys.size <= 1 || (keys.size == 2 && keys.contains("courseCategory")))
+                }
+                keysCheck must beTrue
+            } finally {
+                realApp.stop()
+            }
+            matchRes
         }
     }
 }

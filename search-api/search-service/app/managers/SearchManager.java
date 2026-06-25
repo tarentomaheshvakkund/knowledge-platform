@@ -275,6 +275,7 @@ public class SearchManager {
     public Future<Response> getSearchResponse(Response searchResult, Request req, ActorRef actor) {
         Request request = getSearchRequest(ActorNames.SEARCH_ACTOR(),
                 SearchOperations.GROUP_SEARCH_RESULT_BY_OBJECTTYPE.name());
+        request.setRequest(req.getRequest());
         request.put("searchResult", searchResult.getResult());
         request.setId(req.getId());
         request.setVer(req.getVer());

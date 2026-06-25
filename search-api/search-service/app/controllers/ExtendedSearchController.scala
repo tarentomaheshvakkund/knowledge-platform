@@ -14,6 +14,7 @@ import org.sunbird.common.JsonUtils
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
+import org.sunbird.telemetry.logger.TelemetryManager
 
 class ExtendedSearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchActor: ActorRef, loggingAction: LoggingAction, cc: ControllerComponents, actorSystem: ActorSystem)(implicit exec: ExecutionContext) extends SearchBaseController(cc) {
 
@@ -22,6 +23,9 @@ class ExtendedSearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchA
     val mgr: SearchManager = new SearchManager()
 
     def searchV5() = loggingAction.async { implicit request =>
+        val headersString = request.headers.headers.map(h => h._1 + "=" + h._2).mkString(", ")
+        TelemetryManager.info("searchV5 incoming headers: " + headersString)
+
         val internalReq = getRequest(ApiId.APPLICATION_SEARCH)
         val requestMap: java.util.Map[String, Any] = internalReq.getRequest.asInstanceOf[util.Map[String, Any]]
         requestMap.put(SearchConstants.isSecureSettingsDisabled, true)
@@ -32,7 +36,7 @@ class ExtendedSearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchA
           .orElse(request.headers.get("Authorization").map(h => if (h.startsWith("Bearer ")) h.substring(7) else h))
 
         var userRoles: java.util.List[String] = new java.util.ArrayList[String]()
-        var org: String = ""
+        var orgId: String = ""
 
         tokenOpt.foreach { token =>
           val claims = getClaimsFromToken(token)
@@ -43,13 +47,13 @@ class ExtendedSearchController @Inject()(@Named(ActorNames.SEARCH_ACTOR) searchA
             }
             val orgObj = claims.get(SearchConstants.ORG)
             if (orgObj != null) {
-              org = orgObj.toString
+              orgId = orgObj.toString
             }
           }
         }
 
         internalReq.getContext.put(SearchConstants.USER_ROLES, userRoles)
-        internalReq.getContext.put(SearchConstants.ORG, org)
+        internalReq.getContext.put(SearchConstants.ORG, orgId)
         internalReq.getContext.put(SearchConstants.API_VERSION, SearchConstants.VERSION_V5)
 
         val filters = internalReq.getRequest.getOrDefault(SearchConstants.filters, new java.util.HashMap()).asInstanceOf[java.util.Map[String, Object]]

@@ -229,7 +229,7 @@ public class SearchProcessor {
 		SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
 		List<String> fields = searchDTO.getFields();
 		String apiVersion = (String) searchDTO.getAdditionalProperty(SearchConstants.API_VERSION);
-		if (org.apache.commons.lang3.StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)) {
+		if (StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)) {
 			List<String> v5Fields = new ArrayList<>();
 			v5Fields.add("identifier");
 			v5Fields.add("objectType");
@@ -259,6 +259,7 @@ public class SearchProcessor {
 		QueryBuilder query = getSearchQuery(searchDTO);
 		List<String> userRoles = (List<String>) searchDTO.getAdditionalProperty(SearchConstants.USER_ROLES);
 		String orgId = (String) searchDTO.getAdditionalProperty(SearchConstants.ORG);
+		TelemetryManager.info("SearchProcessor - apiVersion: " + apiVersion + ", userRoles: " + userRoles + ", orgId: " + orgId);
 		if (StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)
 				&& userRoles != null && userRoles.contains(SearchConstants.ROLE_VOLUNTEER) && orgId != null && !orgId.isEmpty()) {
 			String orgEligibilityIndex = Platform.config.hasPath(SearchConstants.ORG_ELIGIBILITY_INDEX) ? 
@@ -272,7 +273,7 @@ public class SearchProcessor {
 			TermsQueryBuilder termsLookupQuery;
 			try {
 				java.lang.reflect.Constructor<TermsQueryBuilder> constructor = TermsQueryBuilder.class.getConstructor(String.class, org.elasticsearch.indices.TermsLookup.class);
-				termsLookupQuery = constructor.newInstance(SearchConstants.identifier, termsLookup);
+				termsLookupQuery = constructor.newInstance(SearchConstants.identifier + SearchConstants.RAW_FIELD_EXTENSION, termsLookup);
 			} catch (Exception e) {
 				throw new RuntimeException("Failed to instantiate TermsQueryBuilder", e);
 			}
@@ -314,6 +315,7 @@ public class SearchProcessor {
 		setAggregations(groupByFinalList, searchSourceBuilder);
 		setAggregations(searchSourceBuilder, searchDTO.getAggregations());
 		searchSourceBuilder.trackScores(true);
+		TelemetryManager.info("SearchProcessor - ES Query: " + searchSourceBuilder.toString());
 		return searchSourceBuilder;
 	}
 
