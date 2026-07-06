@@ -124,4 +124,13 @@ public class SearchConstants {
     public static final String OPERATION = "operation";
     public static final String PROPERTY_NAME = "propertyName";
     public static final String VALUES = "values";
+    public static final String USER_ROLES = "user_roles";
+    public static final String ORG = "org";
+    public static final String ROLE_VOLUNTEER = "VOLUNTEER";
+    public static final String ORG_ELIGIBILITY_INDEX = "search.org_eligibility.index";
+    public static final String ORG_ELIGIBILITY_INDEX_DEFAULT = "org_eligibility_alias";
+    public static final String ES_MAPPING_TYPE_DOC = "_doc";
+    public static final String COURSE_IDS = "courseIds";
+    public static final String API_VERSION = "apiVersion";
+    public static final String VERSION_V5 = "v5";
 }

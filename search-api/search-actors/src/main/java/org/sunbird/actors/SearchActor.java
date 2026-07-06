@@ -18,6 +18,9 @@ import org.sunbird.search.processor.SearchProcessor;
 import org.sunbird.search.util.DefinitionUtil;
 import org.sunbird.search.util.SearchConstants;
 import org.sunbird.telemetry.logger.TelemetryManager;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import scala.concurrent.Await;
 import scala.concurrent.Future;
 import scala.concurrent.duration.Duration;
@@ -46,12 +49,12 @@ public class SearchActor extends SearchBaseActor {
                 return searchResult.map(new Mapper<Map<String, Object>, Response>() {
                     @Override
                     public Response apply(Map<String, Object> lstResult) {
+                        Map<String, Object> finalResult = lstResult;
                         String mode = (String) request.getRequest().get(SearchConstants.mode);
                         if (StringUtils.isNotBlank(mode) && StringUtils.equalsIgnoreCase("collection", mode)) {
-                            return OK(getCollectionsResult(lstResult, processor, request));
-                        } else {
-                            return OK(lstResult);
+                            finalResult = getCollectionsResult(lstResult, processor, request);
                         }
+                        return OK(finalResult);
                     }
                 }, getContext().dispatcher()).recoverWith(new Recover<Future<Response>>() {
                     @Override
@@ -78,7 +81,9 @@ public class SearchActor extends SearchBaseActor {
                 }, getContext().dispatcher());
             } else if (StringUtils.equalsIgnoreCase("GROUP_SEARCH_RESULT_BY_OBJECTTYPE", operation)) {
                 Map<String, Object> searchResponse = (Map<String, Object>) request.get("searchResult");
-                return Futures.successful(OK(getCompositeSearchResponse(searchResponse)));
+                Map<String, Object> groupedResult = getCompositeSearchResponse(searchResponse);
+                groupedResult = filterV5Results(groupedResult, request);
+                return Futures.successful(OK(groupedResult));
             } else {
                 TelemetryManager.log("Unsupported operation: " + operation);
                 throw new ClientException(SearchConstants.ERR_INVALID_OPERATION,
@@ -106,7 +111,18 @@ public class SearchActor extends SearchBaseActor {
                 searchObj.setSecureSettingsDisabled(false);
             }
             searchObj.setUserOrgId((String) request.getContext().get("x-user-channel-id"));
-            TelemetryManager.log("Search Request: ", req);
+            if (request.getContext() != null) {
+                if (request.getContext().containsKey(SearchConstants.USER_ROLES)) {
+                    searchObj.addAdditionalProperty(SearchConstants.USER_ROLES, request.getContext().get(SearchConstants.USER_ROLES));
+                }
+                if (request.getContext().containsKey(SearchConstants.ORG)) {
+                    searchObj.addAdditionalProperty(SearchConstants.ORG, request.getContext().get(SearchConstants.ORG));
+                }
+                if (request.getContext().containsKey(SearchConstants.API_VERSION)) {
+                    searchObj.addAdditionalProperty(SearchConstants.API_VERSION, request.getContext().get(SearchConstants.API_VERSION));
+                }
+            }
+            TelemetryManager.log("Enhanced SearchDTO Object: " + ((new ObjectMapper()).writeValueAsString(searchObj)));
             String queryString = (String) req.get(SearchConstants.query);
             int allowedQueryStringLength;
             try {
@@ -833,5 +849,42 @@ public class SearchActor extends SearchBaseActor {
             implicitFilterProps.addAll(getSearchFilterProperties(implicitFilter, false, null));
             searchObj.setImplicitFilterProperties(implicitFilterProps);
         }
+    }
+
+    public static Map<String, Object> filterV5Results(Map<String, Object> finalResult, Request request) {
+        String apiVersion = (String) request.getContext().get(SearchConstants.API_VERSION);
+        if (StringUtils.equalsIgnoreCase(SearchConstants.VERSION_V5, apiVersion)) {
+            List<String> facets = (List<String>) request.getRequest().get(SearchConstants.facets);
+            Set<String> allowedFields = new java.util.HashSet<>();
+            allowedFields.add("identifier");
+            if (facets != null) {
+                allowedFields.addAll(facets);
+            }
+            for (Map.Entry<String, Object> entry : finalResult.entrySet()) {
+                String key = entry.getKey();
+                if (!StringUtils.equalsIgnoreCase("facets", key) && entry.getValue() instanceof List) {
+                    List<?> list = (List<?>) entry.getValue();
+                    if (CollectionUtils.isNotEmpty(list)) {
+                        if (list.get(0) instanceof Map) {
+                            List<Map<String, Object>> filteredList = new ArrayList<>();
+                            for (Object obj : list) {
+                                if (obj instanceof Map) {
+                                    Map<String, Object> doc = (Map<String, Object>) obj;
+                                    Map<String, Object> filteredDoc = new HashMap<>();
+                                    for (String field : allowedFields) {
+                                        if (doc.containsKey(field)) {
+                                            filteredDoc.put(field, doc.get(field));
+                                        }
+                                    }
+                                    filteredList.add(filteredDoc);
+                                }
+                            }
+                            entry.setValue(filteredList);
+                        }
+                    }
+                }
+            }
+        }
+        return finalResult;
     }
 }
