@@ -4,7 +4,7 @@ package org.sunbird.content.actors
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
 import org.sunbird.cache.impl.RedisCache
-import org.sunbird.common.Platform
+import org.sunbird.common.{DateUtils, Platform}
 import org.sunbird.cloudstore.StorageService
 import org.sunbird.common.dto.{Request, Response, ResponseHandler}
 import org.sunbird.common.exception.{ClientException, ResponseCode}
