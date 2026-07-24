@@ -220,6 +220,12 @@ object DataNode {
       metadata.put("prevStatus", node.getMetadata.get("status"))
       metadata.put("lastStatusChangedOn", DateUtils.formatCurrentDate)
     }
+
+    // AUTO-SET lastUpdatedOn for system updates (if not already provided)
+    if (!metadata.containsKey("lastUpdatedOn")) {
+      metadata.put("lastUpdatedOn", DateUtils.formatCurrentDate)
+    }
+
     // Generate new request object for Each request
     val newRequest = new Request(request)
     newRequest.putAll(metadata)

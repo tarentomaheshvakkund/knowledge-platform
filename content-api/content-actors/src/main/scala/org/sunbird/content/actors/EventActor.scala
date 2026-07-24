@@ -235,6 +235,11 @@ class EventActor @Inject()(implicit oec: OntologyEngineContext, ss: StorageServi
       // Extract attributes to be updated from the request body
       val attributesToUpdate = request.getRequest.asInstanceOf[java.util.Map[String, AnyRef]]
 
+      // AUTO-SET lastUpdatedOn if not provided
+      if (!attributesToUpdate.containsKey("lastUpdatedOn")) {
+        attributesToUpdate.put("lastUpdatedOn", DateUtils.formatCurrentDate)
+      }
+
       // Append attributes from the request to the node's metadata
       attributesToUpdate.forEach(new java.util.function.BiConsumer[String, AnyRef] {
         override def accept(key: String, value: AnyRef): Unit = {
